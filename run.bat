@@ -45,9 +45,13 @@ if "%1"=="clean" (
     echo Cleaning build files...
     if exist cli.exe del cli.exe
     if exist user_key.json del user_key.json
+    if exist alice_key.json del alice_key.json
+    if exist bob_key.json del bob_key.json
     if exist blockchain_data rmdir /s /q blockchain_data
     if exist demo_blockchain rmdir /s /q demo_blockchain
     echo ✅ Cleaned!
+    goto :EOF
+)
     goto :EOF
 )
 

@@ -86,16 +86,84 @@ func loadKey() (*ecdsa.PrivateKey, error) {
 	return priv, nil
 }
 
+func saveKeyWithName(priv *ecdsa.PrivateKey, filename string) error {
+	keyData := KeyData{
+		PrivateKey: hex.EncodeToString(priv.D.Bytes()),
+		PublicKeyX: hex.EncodeToString(priv.PublicKey.X.Bytes()),
+		PublicKeyY: hex.EncodeToString(priv.PublicKey.Y.Bytes()),
+	}
+
+	f, err := os.Create(filename)
+	if err != nil {
+		return fmt.Errorf("failed to create file %s: %w", filename, err)
+	}
+	defer f.Close()
+
+	if err := json.NewEncoder(f).Encode(keyData); err != nil {
+		return fmt.Errorf("failed to encode key: %w", err)
+	}
+
+	fmt.Printf("💾 Saved private key to %s\n", filename)
+	return nil
+}
+
+func loadKeyFromFile(filename string) (*ecdsa.PrivateKey, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file %s: %w", filename, err)
+	}
+	defer f.Close()
+
+	var keyData KeyData
+	if err := json.NewDecoder(f).Decode(&keyData); err != nil {
+		return nil, fmt.Errorf("failed to decode key: %w", err)
+	}
+
+	// Decode private key
+	privKeyBytes, err := hex.DecodeString(keyData.PrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode private key: %w", err)
+	}
+
+	// Decode public key coordinates
+	pubKeyXBytes, err := hex.DecodeString(keyData.PublicKeyX)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode public key X: %w", err)
+	}
+
+	pubKeyYBytes, err := hex.DecodeString(keyData.PublicKeyY)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode public key Y: %w", err)
+	}
+
+	// Reconstruct the private key
+	priv := &ecdsa.PrivateKey{
+		D: new(big.Int).SetBytes(privKeyBytes),
+		PublicKey: ecdsa.PublicKey{
+			Curve: elliptic.P256(),
+			X:     new(big.Int).SetBytes(pubKeyXBytes),
+			Y:     new(big.Int).SetBytes(pubKeyYBytes),
+		},
+	}
+
+	return priv, nil
+}
+
 func main() {
 	args := os.Args
 	if len(args) < 2 {
 		printUsage()
 		return
 	}
-
 	switch args[1] {
 	case "create":
 		createUserKey()
+	case "create-alice":
+		createAlice()
+	case "create-bob":
+		createBob()
+	case "alice-to-bob":
+		aliceToBobTransaction(args)
 	case "send":
 		sendTransaction(args)
 	case "demo":
@@ -117,6 +185,9 @@ func main() {
 func printUsage() {
 	fmt.Println("Blockchain CLI Usage:")
 	fmt.Println("  create          - Create a new wallet key pair")
+	fmt.Println("  create-alice    - Create Alice's wallet")
+	fmt.Println("  create-bob      - Create Bob's wallet")
+	fmt.Println("  alice-to-bob <amount> - Send money from Alice to Bob")
 	fmt.Println("  send <to> <amount> - Send money to address")
 	fmt.Println("  demo            - Run Alice & Bob demo")
 	fmt.Println("  init            - Initialize blockchain")
@@ -139,6 +210,131 @@ func createUserKey() {
 	address := wallet.PublicKeyToAddress(&priv.PublicKey)
 	fmt.Printf("✅ Wallet created successfully!\n")
 	fmt.Printf("Address: %x\n", address)
+}
+
+func createAlice() {
+	fmt.Println("👩 Creating Alice's wallet...")
+
+	alicePriv, err := wallet.GenerateKeyPair()
+	if err != nil {
+		fmt.Printf("Error generating Alice's key pair: %v\n", err)
+		return
+	}
+
+	if err := saveKeyWithName(alicePriv, "alice_key.json"); err != nil {
+		fmt.Printf("Error saving Alice's key: %v\n", err)
+		return
+	}
+
+	aliceAddr := wallet.PublicKeyToAddress(&alicePriv.PublicKey)
+	fmt.Printf("✅ Alice's wallet created successfully!\n")
+	fmt.Printf("Alice Address: %x\n", aliceAddr)
+	fmt.Printf("💾 Keys saved to: alice_key.json\n")
+}
+
+func createBob() {
+	fmt.Println("👨 Creating Bob's wallet...")
+
+	bobPriv, err := wallet.GenerateKeyPair()
+	if err != nil {
+		fmt.Printf("Error generating Bob's key pair: %v\n", err)
+		return
+	}
+
+	if err := saveKeyWithName(bobPriv, "bob_key.json"); err != nil {
+		fmt.Printf("Error saving Bob's key: %v\n", err)
+		return
+	}
+
+	bobAddr := wallet.PublicKeyToAddress(&bobPriv.PublicKey)
+	fmt.Printf("✅ Bob's wallet created successfully!\n")
+	fmt.Printf("Bob Address: %x\n", bobAddr)
+	fmt.Printf("💾 Keys saved to: bob_key.json\n")
+}
+
+func aliceToBobTransaction(args []string) {
+	if len(args) < 3 {
+		fmt.Println("Usage: cli alice-to-bob <amount>")
+		fmt.Println("Example: cli alice-to-bob 25.5")
+		return
+	}
+
+	// Parse amount
+	amount, err := strconv.ParseFloat(args[2], 64)
+	if err != nil {
+		fmt.Printf("Invalid amount: %v\n", err)
+		return
+	}
+
+	// Load Alice's key
+	fmt.Println("🔑 Loading Alice's key...")
+	alicePriv, err := loadKeyFromFile("alice_key.json")
+	if err != nil {
+		fmt.Printf("Error loading Alice's key: %v\n", err)
+		fmt.Println("💡 Please run 'cli create-alice' first to create Alice's wallet")
+		return
+	}
+
+	// Load Bob's key to get his address
+	fmt.Println("🔑 Loading Bob's address...")
+	bobPriv, err := loadKeyFromFile("bob_key.json")
+	if err != nil {
+		fmt.Printf("Error loading Bob's key: %v\n", err)
+		fmt.Println("💡 Please run 'cli create-bob' first to create Bob's wallet")
+		return
+	}
+
+	aliceAddr := wallet.PublicKeyToAddress(&alicePriv.PublicKey)
+	bobAddr := wallet.PublicKeyToAddress(&bobPriv.PublicKey)
+
+	fmt.Printf("💸 Alice (%x) sending %.2f coins to Bob (%x)...\n",
+		aliceAddr[:8], amount, bobAddr[:8])
+
+	// Create transaction
+	tx := &blockchain.Transaction{
+		Sender:    aliceAddr,
+		Receiver:  bobAddr,
+		Amount:    amount,
+		Timestamp: time.Now().Unix(),
+	}
+
+	// Alice signs the transaction
+	fmt.Println("🔏 Alice signing transaction...")
+	if err := wallet.SignTransaction(tx, alicePriv); err != nil {
+		fmt.Printf("Error signing transaction: %v\n", err)
+		return
+	}
+
+	// Verify signature
+	if !wallet.VerifyTransaction(tx, &alicePriv.PublicKey) {
+		fmt.Println("❌ Transaction signature invalid")
+		return
+	}
+	fmt.Println("✅ Transaction signature verified")
+
+	// Create validator and process transaction
+	fmt.Println("📦 Creating block...")
+	validator, err := validator.NewValidatorNode("./blockchain_data")
+	if err != nil {
+		fmt.Printf("Error creating validator: %v\n", err)
+		return
+	}
+	defer validator.Close()
+
+	block, err := validator.CreateBlock([]*blockchain.Transaction{tx})
+	if err != nil {
+		fmt.Printf("Error creating block: %v\n", err)
+		return
+	}
+
+	fmt.Println("\n🎉 Transaction completed successfully!")
+	fmt.Printf("📋 Transaction Details:\n")
+	fmt.Printf("   From: Alice (%x)\n", aliceAddr)
+	fmt.Printf("   To: Bob (%x)\n", bobAddr)
+	fmt.Printf("   Amount: %.2f coins\n", amount)
+	fmt.Printf("   Block: %d\n", block.Index)
+	fmt.Printf("   Block Hash: %x\n", block.CurrentBlockHash)
+	fmt.Printf("   Merkle Root: %x\n", block.MerkleRoot)
 }
 
 func sendTransaction(args []string) {
@@ -213,7 +409,6 @@ func runAliceBobDemo() {
 		log.Fatal("Failed to create validator:", err)
 	}
 	defer validator.Close()
-
 	// Create Alice's wallet
 	fmt.Println("\n👩 Creating Alice's wallet...")
 	alicePriv, err := wallet.GenerateKeyPair()
@@ -221,6 +416,11 @@ func runAliceBobDemo() {
 		log.Fatal("Failed to generate Alice's key:", err)
 	}
 	aliceAddr := wallet.PublicKeyToAddress(&alicePriv.PublicKey)
+
+	// Save Alice's key to file
+	if err := saveKeyWithName(alicePriv, "alice_key.json"); err != nil {
+		log.Fatal("Failed to save Alice's key:", err)
+	}
 	fmt.Printf("Alice Address: %x\n", aliceAddr)
 
 	// Create Bob's wallet
@@ -230,6 +430,11 @@ func runAliceBobDemo() {
 		log.Fatal("Failed to generate Bob's key:", err)
 	}
 	bobAddr := wallet.PublicKeyToAddress(&bobPriv.PublicKey)
+
+	// Save Bob's key to file
+	if err := saveKeyWithName(bobPriv, "bob_key.json"); err != nil {
+		log.Fatal("Failed to save Bob's key:", err)
+	}
 	fmt.Printf("Bob Address: %x\n", bobAddr)
 
 	// Alice sends money to Bob
@@ -292,12 +497,18 @@ func runAliceBobDemo() {
 	fmt.Printf("   Transactions: %d\n", len(block2.Transactions))
 	fmt.Printf("   Merkle Root: %x\n", block2.MerkleRoot)
 	fmt.Printf("   Previous Block: %x\n", block2.PreviousBlockHash)
-
 	fmt.Println("\n🎉 Demo completed successfully!")
 	fmt.Println("Summary:")
 	fmt.Printf("- Alice sent 50.0 coins to Bob\n")
 	fmt.Printf("- Bob sent 20.0 coins back to Alice\n")
 	fmt.Printf("- 2 blocks created with valid signatures and Merkle Trees\n")
+	fmt.Println("\n📁 Wallet files created:")
+	fmt.Printf("- alice_key.json (Alice's private key)\n")
+	fmt.Printf("- bob_key.json (Bob's private key)\n")
+	fmt.Printf("- demo_blockchain/ (blockchain database)\n")
+	fmt.Println("\n💡 You can now use these wallets:")
+	fmt.Printf("- Load Alice's key: loadKeyFromFile(\"alice_key.json\")\n")
+	fmt.Printf("- Load Bob's key: loadKeyFromFile(\"bob_key.json\")\n")
 }
 
 func initBlockchain() {
