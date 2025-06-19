@@ -51,12 +51,8 @@ func (vn *ValidatorNode) CreateBlock(transactions []*blockchain.Transaction) (*b
 			prevHash = prevBlock.CurrentBlockHash
 		}
 	}
-
 	// Tạo block mới
 	newBlock := blockchain.NewBlock(latestIndex+1, transactions, prevHash)
-	if newBlock == nil {
-		return nil, fmt.Errorf("failed to create block - insufficient transactions")
-	}
 
 	// Xác thực bằng Merkle Tree (yêu cầu đề bài)
 	if !newBlock.IsValid() {

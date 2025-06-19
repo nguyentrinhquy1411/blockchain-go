@@ -16,13 +16,8 @@ type Block struct {
 	CurrentBlockHash  []byte         `json:"current_block_hash"`
 }
 
-// NewBlock tạo block mới khi đủ 5 giao dịch
+// NewBlock tạo block mới từ danh sách transactions
 func NewBlock(index int, transactions []*Transaction, prevHash []byte) *Block {
-	// Kiểm tra số lượng transactions tối thiểu
-	if len(transactions) < 5 {
-		return nil // Không tạo block nếu chưa đủ 5 giao dịch
-	}
-
 	block := &Block{
 		Index:             index,
 		Timestamp:         time.Now().Unix(),

@@ -36,8 +36,16 @@ Thumbs.db
 
 # User key files (sensitive)
 user_key.json
+alice_key.json
+bob_key.json
+*_key.json
 *.key
 *.pem
+
+# Blockchain data directories (contains sensitive data)
+blockchain_data/
+demo_blockchain/
+pool_blockchain/
 
 # Log files
 *.log
