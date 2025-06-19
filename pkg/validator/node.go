@@ -37,11 +37,6 @@ func (vn *ValidatorNode) Close() error {
 
 // CreateBlock tạo block mới từ transactions (core functionality)
 func (vn *ValidatorNode) CreateBlock(transactions []*blockchain.Transaction) (*blockchain.Block, error) {
-	// Kiểm tra số lượng transactions
-	if len(transactions) < 5 {
-		return nil, fmt.Errorf("insufficient transactions - need at least 5 transactions to create block, got %d", len(transactions))
-	}
-
 	// Lấy previous block hash nếu có
 	var prevHash []byte
 	latestIndex, err := vn.storage.GetLatestIndex()
