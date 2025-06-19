@@ -155,7 +155,8 @@ func main() {
 		printUsage()
 		return
 	}
-	switch args[1] {	case "create":
+	switch args[1] {
+	case "create":
 		createUserKey()
 	case "create-alice":
 		createAlice()
@@ -516,5 +517,3 @@ func initBlockchain() {
 	fmt.Println("✅ Blockchain initialized successfully!")
 	fmt.Println("Data directory: ./blockchain_data")
 }
-
-
