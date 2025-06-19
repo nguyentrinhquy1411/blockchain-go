@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/nguyentrinhquy1411/blockchain-go/pkg/blockchain"
-	"github.com/nguyentrinhquy1411/blockchain-go/pkg/storage"
 	"github.com/nguyentrinhquy1411/blockchain-go/pkg/validator"
 	"github.com/nguyentrinhquy1411/blockchain-go/pkg/wallet"
 )
@@ -156,8 +155,7 @@ func main() {
 		printUsage()
 		return
 	}
-	switch args[1] {
-	case "create":
+	switch args[1] {	case "create":
 		createUserKey()
 	case "create-alice":
 		createAlice()
@@ -171,8 +169,6 @@ func main() {
 		runAliceBobDemo()
 	case "init":
 		initBlockchain()
-	case "count":
-		checkBlockCount()
 	case "help":
 		printUsage()
 	default:
@@ -190,7 +186,6 @@ func printUsage() {
 	fmt.Println("  send <to> <amount> - Send money to address")
 	fmt.Println("  demo            - Run Alice & Bob demo")
 	fmt.Println("  init            - Initialize blockchain")
-	fmt.Println("  count           - Show blockchain block count")
 	fmt.Println("  help            - Show this help message")
 }
 func createUserKey() {
@@ -522,60 +517,4 @@ func initBlockchain() {
 	fmt.Println("Data directory: ./blockchain_data")
 }
 
-func checkBlockCount() {
-	fmt.Println("📊 Checking blockchain statistics...")
 
-	// Check main blockchain
-	fmt.Println("\n🔗 Main Blockchain (blockchain_data):")
-	checkStorageStats("./blockchain_data")
-
-	// Check demo blockchain if exists
-	fmt.Println("\n🎯 Demo Blockchain (demo_blockchain):")
-	checkStorageStats("./demo_blockchain")
-
-	// Check pool blockchain if exists
-	fmt.Println("\n🔄 Pool Blockchain (pool_blockchain):")
-	checkStorageStats("./pool_blockchain")
-}
-
-func checkStorageStats(dbPath string) {
-	blockStorage, err := storage.NewBlockStorage(dbPath)
-	if err != nil {
-		fmt.Printf("❌ Cannot open storage at %s: %v\n", dbPath, err)
-		return
-	}
-	defer blockStorage.Close()
-
-	latestIndex, err := blockStorage.GetLatestIndex()
-	if err != nil {
-		fmt.Printf("❌ Cannot get latest index: %v\n", err)
-		return
-	}
-
-	if latestIndex == -1 {
-		fmt.Printf("📭 No blocks found\n")
-		return
-	}
-
-	blockCount := latestIndex + 1
-	fmt.Printf("📦 Total blocks: %d\n", blockCount)
-	fmt.Printf("🏷️  Latest block index: %d\n", latestIndex)
-
-	// Show some block details
-	fmt.Printf("📋 Block details:\n")
-	start := 0
-	if latestIndex > 4 {
-		start = latestIndex - 4
-		fmt.Printf("   ... (showing last 5 blocks)\n")
-	}
-
-	for i := start; i <= latestIndex; i++ {
-		block, err := blockStorage.GetBlockByIndex(i)
-		if err != nil {
-			fmt.Printf("   Block %d: ❌ Error: %v\n", i, err)
-			continue
-		}
-		fmt.Printf("   Block %d: %d transactions, hash: %x\n",
-			i, len(block.Transactions), block.CurrentBlockHash[:8])
-	}
-}
