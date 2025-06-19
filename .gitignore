@@ -45,7 +45,6 @@ bob_key.json
 # Blockchain data directories (contains sensitive data)
 blockchain_data/
 demo_blockchain/
-pool_blockchain/
 
 # Log files
 *.log

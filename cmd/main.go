@@ -169,8 +169,6 @@ func main() {
 		sendTransaction(args)
 	case "demo":
 		runAliceBobDemo()
-	case "pool-demo":
-		runTransactionPoolDemo()
 	case "init":
 		initBlockchain()
 	case "count":
@@ -191,7 +189,6 @@ func printUsage() {
 	fmt.Println("  alice-to-bob <amount> - Send money from Alice to Bob")
 	fmt.Println("  send <to> <amount> - Send money to address")
 	fmt.Println("  demo            - Run Alice & Bob demo")
-	fmt.Println("  pool-demo       - Demo transaction pool (5 transactions per block)")
 	fmt.Println("  init            - Initialize blockchain")
 	fmt.Println("  count           - Show blockchain block count")
 	fmt.Println("  help            - Show this help message")
@@ -581,123 +578,4 @@ func checkStorageStats(dbPath string) {
 		fmt.Printf("   Block %d: %d transactions, hash: %x\n",
 			i, len(block.Transactions), block.CurrentBlockHash[:8])
 	}
-}
-
-func runTransactionPoolDemo() {
-	fmt.Println("🔄 Running Transaction Pool Demo (5 transactions per block)...")
-
-	// Create validator với transaction pool
-	validator, err := validator.NewValidatorNode("./pool_blockchain")
-	if err != nil {
-		log.Fatal("Failed to create validator:", err)
-	}
-	defer validator.Close()
-
-	// Tạo nhiều wallets để demo
-	fmt.Println("\n👥 Creating multiple wallets...")
-	wallets := make([]*ecdsa.PrivateKey, 8)
-	addresses := make([][]byte, 8)
-
-	for i := 0; i < 8; i++ {
-		priv, err := wallet.GenerateKeyPair()
-		if err != nil {
-			log.Fatal(fmt.Sprintf("Failed to generate wallet %d:", i), err)
-		}
-		wallets[i] = priv
-		addresses[i] = wallet.PublicKeyToAddress(&priv.PublicKey)
-		fmt.Printf("   Wallet %d: %x\n", i+1, addresses[i][:8])
-	}
-
-	fmt.Println("\n💰 Adding transactions to pool...")
-
-	// Thêm 12 transactions vào pool (sẽ tạo 2 blocks + 2 transactions còn lại)
-	transactions := []struct {
-		from   int
-		to     int
-		amount float64
-	}{
-		{0, 1, 10.0}, {1, 2, 15.0}, {2, 3, 20.0}, {3, 4, 25.0}, {4, 5, 30.0}, // Block 1 (5 transactions)
-		{5, 6, 35.0}, {6, 7, 40.0}, {7, 0, 45.0}, {0, 3, 50.0}, {1, 4, 55.0}, // Block 2 (5 transactions)
-		{2, 5, 60.0}, {3, 6, 65.0}, // Pending (2 transactions)
-	}
-
-	blockCount := 0
-	for i, txData := range transactions {
-		// Tạo transaction
-		tx := &blockchain.Transaction{
-			Sender:    addresses[txData.from],
-			Receiver:  addresses[txData.to],
-			Amount:    txData.amount,
-			Timestamp: time.Now().Unix() + int64(i), // Unique timestamp
-		}
-
-		// Ký transaction
-		if err := wallet.SignTransaction(tx, wallets[txData.from]); err != nil {
-			log.Fatal("Failed to sign transaction:", err)
-		}
-
-		// Verify signature
-		if !wallet.VerifyTransaction(tx, &wallets[txData.from].PublicKey) {
-			log.Fatal("Transaction signature invalid")
-		}
-
-		// Thêm vào pool
-		fmt.Printf("   Transaction %d: Wallet%d → Wallet%d (%.1f coins)\n",
-			i+1, txData.from+1, txData.to+1, txData.amount)
-
-		block, err := validator.AddTransaction(tx)
-		if err != nil {
-			log.Fatal("Failed to add transaction:", err)
-		}
-
-		// Kiểm tra xem có block mới được tạo không
-		if block != nil {
-			blockCount++
-			fmt.Printf("\n🎉 Block %d created automatically!\n", blockCount)
-			fmt.Printf("   Block Index: %d\n", block.Index)
-			fmt.Printf("   Transactions: %d\n", len(block.Transactions))
-			fmt.Printf("   Block Hash: %x\n", block.CurrentBlockHash[:8])
-			fmt.Printf("   Merkle Root: %x\n", block.MerkleRoot[:8])
-			if block.PreviousBlockHash != nil {
-				fmt.Printf("   Previous Hash: %x\n", block.PreviousBlockHash[:8])
-			}
-		}
-
-		// Hiển thị pool status
-		poolSize := validator.GetPoolSize()
-		fmt.Printf("   Pool size: %d transactions\n", poolSize)
-	}
-
-	// Hiển thị transactions còn lại trong pool
-	fmt.Printf("\n📊 Final Status:\n")
-	fmt.Printf("   Blocks created: %d\n", blockCount)
-	fmt.Printf("   Pending transactions: %d\n", validator.GetPoolSize())
-
-	if validator.GetPoolSize() > 0 {
-		fmt.Printf("\n💡 Remaining transactions in pool:\n")
-		pending := validator.GetPendingTransactions()
-		for i, tx := range pending {
-			fmt.Printf("   Pending %d: %x → %x (%.1f coins)\n",
-				i+1, tx.Sender[:4], tx.Receiver[:4], tx.Amount)
-		}
-
-		// Option để force create block với remaining transactions
-		fmt.Printf("\n🔧 Force creating block with remaining transactions...\n")
-		finalBlock, err := validator.ForceCreateBlock()
-		if err != nil {
-			fmt.Printf("   Error: %v\n", err)
-		} else {
-			blockCount++
-			fmt.Printf("✅ Final block created!\n")
-			fmt.Printf("   Block Index: %d\n", finalBlock.Index)
-			fmt.Printf("   Transactions: %d\n", len(finalBlock.Transactions))
-			fmt.Printf("   Block Hash: %x\n", finalBlock.CurrentBlockHash[:8])
-		}
-	}
-
-	fmt.Printf("\n🎉 Transaction Pool Demo completed!\n")
-	fmt.Printf("📈 Summary:\n")
-	fmt.Printf("   Total blocks created: %d\n", blockCount)
-	fmt.Printf("   Total transactions processed: %d\n", len(transactions))
-	fmt.Printf("   Database location: ./pool_blockchain/\n")
 }
