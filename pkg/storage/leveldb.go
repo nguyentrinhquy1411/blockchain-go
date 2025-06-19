@@ -99,26 +99,26 @@ func (bs *BlockStorage) GetLatestIndex() (int, error) {
 }
 
 // HasBlock kiểm tra xem block có tồn tại không (theo hash)
-func (bs *BlockStorage) HasBlock(hash []byte) bool {
-	exists, err := bs.db.Has(hash, nil)
-	if err != nil {
-		// Log error nhưng return false để an toàn
-		return false
-	}
-	return exists
-}
+// func (bs *BlockStorage) HasBlock(hash []byte) bool {
+// 	exists, err := bs.db.Has(hash, nil)
+// 	if err != nil {
+// 		// Log error nhưng return false để an toàn
+// 		return false
+// 	}
+// 	return exists
+// }
 
 // HasBlockByIndex kiểm tra xem block có tồn tại không (theo index)
-func (bs *BlockStorage) HasBlockByIndex(index int) bool {
-	key := "height_" + strconv.Itoa(index)
-	exists, err := bs.db.Has([]byte(key), nil)
-	if err != nil {
-		return false
-	}
-	return exists
-}
+// func (bs *BlockStorage) HasBlockByIndex(index int) bool {
+// 	key := "height_" + strconv.Itoa(index)
+// 	exists, err := bs.db.Has([]byte(key), nil)
+// 	if err != nil {
+// 		return false
+// 	}
+// 	return exists
+// }
 
 // DeleteBlock xóa block (nếu cần)
-func (bs *BlockStorage) DeleteBlock(hash []byte) error {
-	return bs.db.Delete(hash, nil)
-}
+// func (bs *BlockStorage) DeleteBlock(hash []byte) error {
+// 	return bs.db.Delete(hash, nil)
+// }

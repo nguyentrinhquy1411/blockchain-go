@@ -180,14 +180,14 @@ func main() {
 
 func printUsage() {
 	fmt.Println("Blockchain CLI Usage:")
-	fmt.Println("  create          - Create a new wallet key pair")
-	fmt.Println("  create-alice    - Create Alice's wallet")
-	fmt.Println("  create-bob      - Create Bob's wallet")
+	fmt.Println("  create           	 - Create a new wallet key pair")
+	fmt.Println("  create-alice    		 - Create Alice's wallet")
+	fmt.Println("  create-bob      		 - Create Bob's wallet")
 	fmt.Println("  alice-to-bob <amount> - Send money from Alice to Bob")
-	fmt.Println("  send <to> <amount> - Send money to address")
-	fmt.Println("  demo            - Run Alice & Bob demo")
-	fmt.Println("  init            - Initialize blockchain")
-	fmt.Println("  help            - Show this help message")
+	fmt.Println("  send <to> <amount> 	 - Send money to address")
+	fmt.Println("  demo            		 - Run Alice & Bob demo")
+	fmt.Println("  init            		 - Initialize blockchain")
+	fmt.Println("  help            		 - Show this help message")
 }
 func createUserKey() {
 	priv, err := wallet.GenerateKeyPair()
