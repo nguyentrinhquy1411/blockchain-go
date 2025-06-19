@@ -7,17 +7,23 @@
 3. [Giải Thích Chi Tiết Từng File](#giải-thích-chi-tiết-từng-file)
 4. [Khái Niệm Blockchain Cơ Bản](#khái-niệm-blockchain-cơ-bản)
 5. [Luồng Hoạt Động](#luồng-hoạt-động)
+6. [Demo và CLI Usage](#demo-và-cli-usage)
 
 ---
 
 ## 🎯 Tổng Quan Dự Án
 
-Dự án này là một **blockchain đơn giản** được viết bằng Go, mô phỏng việc chuyển tiền giữa Alice và Bob. Các tính năng chính:
+Dự án này là một **blockchain đơn giản** được viết bằng Go, tập trung vào các yêu cầu cốt lõi của blockchain:
 
-- **ECDSA Digital Signatures** - Ký số giao dịch
-- **Merkle Tree** - Xác thực tính toàn vẹn
-- **LevelDB** - Lưu trữ dữ liệu
-- **CLI Interface** - Giao diện dòng lệnh
+### ✅ Tính Năng Chính
+
+- **📝 Danh sách giao dịch**: Mỗi block chứa tập hợp các giao dịch hợp lệ
+- **🌳 Merkle Root**: Xác thực tính toàn vẹn của tất cả giao dịch
+- **🔗 Previous Block Hash**: Liên kết các block tạo thành chuỗi
+- **🔐 Current Block Hash**: Hash duy nhất của block hiện tại
+- **✍️ ECDSA Digital Signatures**: Ký số và xác thực giao dịch
+- **💾 LevelDB Storage**: Lưu trữ bền vững và hiệu quả
+- **🖥️ CLI Interface**: Giao diện dòng lệnh thân thiện
 
 ---
 
@@ -25,22 +31,27 @@ Dự án này là một **blockchain đơn giản** được viết bằng Go, m
 
 ```
 blockchain-go/
-├── cmd/main.go           # CLI chính - điểm vào chương trình
-├── pkg/
-│   ├── blockchain/       # Logic blockchain cốt lõi
-│   │   ├── block.go     # Định nghĩa Block
-│   │   ├── transaction.go # Định nghĩa Transaction
-│   │   └── merkle.go    # Merkle Tree
-│   ├── wallet/          # Quản lý ví và chữ ký
-│   │   ├── key.go       # Tạo và quản lý khóa
-│   │   └── sign.go      # Ký và xác thực
-│   ├── storage/         # Lưu trữ dữ liệu
-│   │   └── leveldb.go   # Tương tác LevelDB
-│   ├── validator/       # Node xác thực
-│   │   └── node.go      # Logic validator
-│   └── utils/           # Tiện ích
-│       └── hash.go      # Hàm hash
-└── blockchain_data/     # Dữ liệu blockchain
+├── 🚀 cmd/main.go               # CLI chính - điểm vào chương trình
+├── 📦 pkg/
+│   ├── blockchain/              # Logic blockchain cốt lõi
+│   │   ├── block.go            # Định nghĩa Block và tạo block
+│   │   ├── transaction.go      # Định nghĩa Transaction và hash
+│   │   └── merkle.go           # Merkle Tree implementation
+│   ├── wallet/                 # Quản lý ví và chữ ký
+│   │   ├── key.go             # Tạo khóa và địa chỉ ví
+│   │   └── sign.go            # Ký và xác thực giao dịch
+│   ├── storage/                # Lưu trữ dữ liệu
+│   │   └── leveldb.go         # LevelDB operations
+│   ├── validator/              # Node xác thực
+│   │   └── node.go            # Tạo và validate blocks
+│   └── utils/                  # Tiện ích
+│       └── hash.go            # Hàm hash utilities
+├── 🔑 alice_key.json           # Ví của Alice
+├── 🔑 bob_key.json             # Ví của Bob
+├── 🏃 run.bat                  # Script chạy demo
+├── 🔧 cli.exe                  # Executable đã build
+├── 📁 blockchain_data/         # Database chính
+└── 📁 demo_blockchain/         # Database demo
 ```
 
 ---
@@ -57,7 +68,6 @@ import (
     "crypto/elliptic"
     "crypto/rand"
     "crypto/sha256"
-    "fmt"
 )
 ```
 
@@ -70,12 +80,7 @@ import (
 
 ```go
 func GenerateKeyPair() (*ecdsa.PrivateKey, error) {
-    // Tạo private key sử dụng đường cong P256
-    privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-    if err != nil {
-        return nil, fmt.Errorf("failed to generate key pair: %w", err)
-    }
-    return privKey, nil
+    return ecdsa.GenerateKey(elliptic.P256(), rand.Reader) // xài đường cong elliptic.P256() để tạo khóa
 }
 ```
 
@@ -88,16 +93,18 @@ func GenerateKeyPair() (*ecdsa.PrivateKey, error) {
 
 ```go
 func PublicKeyToAddress(pubKey *ecdsa.PublicKey) []byte {
-    // Chuyển public key thành bytes
-    pubKeyBytes := append(pubKey.X.Bytes(), pubKey.Y.Bytes()...)
-
-    // Hash để tạo address
-    hash := sha256.Sum256(pubKeyBytes)
-    return hash[:20] // Lấy 20 bytes đầu làm address
+    pubBytes := append(pubKey.X.Bytes(), pubKey.Y.Bytes()...) // nghiên cứu thêm
+    hash := sha256.Sum256(pubBytes)
+    return hash[:20]
 }
 ```
 
 **Giải thích:**
+
+- **Address**: Địa chỉ ví, tính từ public key (20 bytes đầu của SHA-256 hash)
+- **X, Y**: Tọa độ của điểm trên đường cong elliptic
+- **SHA-256**: Hash công khai để tạo address duy nhất
+- **[:20]**: Lấy 20 bytes = 160 bits cho address (giống Ethereum)
 
 - **Address**: Địa chỉ ví, tính từ public key
 - **X, Y**: Tọa độ của điểm trên đường cong elliptic
@@ -109,18 +116,14 @@ func PublicKeyToAddress(pubKey *ecdsa.PublicKey) []byte {
 ### 2. ✍️ pkg/wallet/sign.go - Ký Số và Xác Thực
 
 ```go
-func SignTransaction(tx *Transaction, privKey *ecdsa.PrivateKey) error {
-    // Tạo hash của transaction (không bao gồm signature)
-    txHash := tx.Hash()
-
-    // Ký hash bằng private key
-    r, s, err := ecdsa.Sign(rand.Reader, privKey, txHash)
+func SignTransaction(tx *blockchain.Transaction, privKey *ecdsa.PrivateKey) error {
+    hash, _ := tx.Hash()  // Lấy hash của transaction
+    r, s, err := ecdsa.Sign(rand.Reader, privKey, hash)  // Ký hash
     if err != nil {
-        return fmt.Errorf("failed to sign transaction: %w", err)
+        return fmt.Errorf("sign error: %w", err)
     }
 
-    // Lưu chữ ký (r và s ghép lại)
-    tx.Signature = append(r.Bytes(), s.Bytes()...)
+    tx.Signature = append(r.Bytes(), s.Bytes()...)  // Ghép r và s
     return nil
 }
 ```
@@ -129,21 +132,15 @@ func SignTransaction(tx *Transaction, privKey *ecdsa.PrivateKey) error {
 
 - **Hash trước khi ký**: Chỉ ký hash, không ký toàn bộ dữ liệu
 - **r, s**: Hai thành phần của chữ ký ECDSA
-- **Deterministic**: Cùng private key + hash → cùng chữ ký
-- **Non-repudiation**: Chỉ chủ private key mới tạo được chữ ký
+- **Deterministic**: Cùng private key + hash → có thể tạo ra chữ ký khác nhau do random
+- **Non-repudiation**: Chỉ chủ private key mới tạo được chữ ký hợp lệ
 
 ```go
-func VerifyTransaction(tx *Transaction, pubKey *ecdsa.PublicKey) bool {
-    // Tạo lại hash của transaction
-    txHash := tx.Hash()
-
-    // Tách r và s từ signature
-    sigLen := len(tx.Signature)
-    r := new(big.Int).SetBytes(tx.Signature[:sigLen/2])
-    s := new(big.Int).SetBytes(tx.Signature[sigLen/2:])
-
-    // Xác thực chữ ký
-    return ecdsa.Verify(pubKey, txHash, r, s)
+func VerifyTransaction(tx *blockchain.Transaction, pubKey *ecdsa.PublicKey) bool {
+    hash, _ := tx.Hash()  // Tạo lại hash của transaction
+    r := new(big.Int).SetBytes(tx.Signature[:len(tx.Signature)/2])  // Tách r
+    s := new(big.Int).SetBytes(tx.Signature[len(tx.Signature)/2:])  // Tách s
+    return ecdsa.Verify(pubKey, hash, r, s)  // Xác thực
 }
 ```
 
@@ -159,11 +156,11 @@ func VerifyTransaction(tx *Transaction, pubKey *ecdsa.PublicKey) bool {
 
 ```go
 type Transaction struct {
-    Sender    []byte  `json:"sender"`     // Địa chỉ người gửi
-    Receiver  []byte  `json:"receiver"`   // Địa chỉ người nhận
-    Amount    float64 `json:"amount"`     // Số tiền
-    Timestamp int64   `json:"timestamp"`  // Thời gian
-    Signature []byte  `json:"signature"`  // Chữ ký
+    Sender    []byte // Public Key or Address
+    Receiver  []byte // Public Key or Address
+    Amount    float64
+    Timestamp int64
+    Signature []byte // R and S concatenated
 }
 ```
 
@@ -175,17 +172,19 @@ type Transaction struct {
 - **Signature**: Chữ ký ECDSA chứng minh quyền sở hữu
 
 ```go
-func (t *Transaction) Hash() []byte {
-    // Tạo bản sao transaction không có signature
-    txCopy := *t
-    txCopy.Signature = nil
-
-    // Serialize thành JSON
-    data, _ := json.Marshal(txCopy)
-
-    // Hash bằng SHA-256
+func (t *Transaction) Hash() ([]byte, error) {
+    txCopy := *t           // Copy ra để không thay đổi transaction gốc
+    txCopy.Signature = nil // Loại bỏ signature
+    data, err := json.Marshal(txCopy)
+    if err != nil {
+        return nil, fmt.Errorf("failed to marshal transaction: %w", err)
+    }
     hash := sha256.Sum256(data)
-    return hash[:]
+    // Đặc điểm SHA-256:
+    // Deterministic: cùng input → cùng output
+    // Irreversible: không thể reverse từ hash về data
+    // Collision resistant: rất khó tìm 2 input có cùng hash
+    return hash[:], nil
 }
 ```
 
@@ -199,58 +198,45 @@ func (t *Transaction) Hash() []byte {
 ### 4. 🌳 pkg/blockchain/merkle.go - Cây Merkle
 
 ```go
+// MerkleTree tối giản cho xác thực tính toàn vẹn
 type MerkleTree struct {
-    Root *MerkleNode `json:"root"`
-}
-
-type MerkleNode struct {
-    Left  *MerkleNode `json:"left"`
-    Right *MerkleNode `json:"right"`
-    Data  []byte      `json:"data"`
+    Root []byte
 }
 ```
 
-**Cây Merkle là gì?**
+**Merkle Tree là gì?**
 
 - **Binary Tree**: Cây nhị phân, mỗi node có tối đa 2 con
-- **Hash Tree**: Mỗi node chứa hash
-- **Leaf Nodes**: Lá cây là hash của từng transaction
-- **Root**: Gốc cây là hash tổng hợp của tất cả transactions
+- **Hash-based**: Mỗi node chứa hash của các node con
+- **Root Hash**: Hash ở đỉnh đại diện cho toàn bộ cây
+- **Tamper Detection**: Thay đổi bất kỳ leaf nào sẽ thay đổi root
 
 ```go
-func NewMerkleTree(data [][]byte) *MerkleTree {
-    if len(data) == 0 {
+func NewMerkleTree(txHashes [][]byte) *MerkleTree {
+    if len(txHashes) == 0 {
         return &MerkleTree{Root: nil}
     }
 
-    // Tạo leaf nodes từ data
-    var nodes []*MerkleNode
-    for _, datum := range data {
-        node := &MerkleNode{Data: datum}
-        nodes = append(nodes, node)
-    }
+    nodes := txHashes
 
-    // Nếu số lượng lẻ, duplicate node cuối
-    if len(nodes)%2 != 0 {
-        nodes = append(nodes, nodes[len(nodes)-1])
-    }
-
-    // Xây dựng cây từ dưới lên
+    // Build tree bottom-up (từ dưới lên)
     for len(nodes) > 1 {
-        var level []*MerkleNode
+        var level [][]byte
 
         for i := 0; i < len(nodes); i += 2 {
-            // Ghép cặp nodes và hash
             left := nodes[i]
-            right := nodes[i+1]
+            var right []byte
 
-            // Tạo parent node
-            parent := &MerkleNode{
-                Left:  left,
-                Right: right,
-                Data:  hashPair(left.Data, right.Data),
+            if i+1 < len(nodes) {
+                right = nodes[i+1]
+            } else {
+                right = left // Duplicate if odd number
             }
-            level = append(level, parent)
+
+            // Combine and hash
+            combined := append(left, right...)
+            hash := sha256.Sum256(combined)
+            level = append(level, hash[:])
         }
         nodes = level
     }
@@ -259,217 +245,303 @@ func NewMerkleTree(data [][]byte) *MerkleTree {
 }
 ```
 
-**Tại sao cần Merkle Tree?**
+**Giải thích thuật toán:**
 
-- **Integrity**: Đảm bảo tính toàn vẹn - nếu 1 transaction thay đổi, root hash sẽ khác
-- **Efficiency**: Chỉ cần lưu root hash thay vì tất cả transaction hashes
-- **Proof**: Có thể chứng minh 1 transaction có trong block mà không cần toàn bộ block
+1. **Bắt đầu từ leaves**: Mỗi transaction hash là một leaf
+2. **Pair-wise hashing**: Ghép đôi và hash các node
+3. **Handle odd numbers**: Nếu lẻ, duplicate node cuối
+4. **Bottom-up**: Lặp cho đến khi còn 1 node (root)
+5. **SHA-256**: Dùng SHA-256 để hash mỗi cặp
+
+**Ví dụ với 4 transactions:**
+
+```
+        Root
+       /    \
+    H12      H34
+   /  \     /  \
+  H1   H2  H3   H4
+  |    |   |    |
+ TX1  TX2 TX3  TX4
+```
 
 ---
 
-### 5. 🧱 pkg/blockchain/block.go - Khối
+### 5. 📦 pkg/blockchain/block.go - Block Structure
 
 ```go
+// Block theo yêu cầu: danh sách giao dịch, Merkle Root, PreviousBlockHash, CurrentBlockHash
 type Block struct {
     Index             int            `json:"index"`
     Timestamp         int64          `json:"timestamp"`
-    Transactions      []*Transaction `json:"transactions"`
+    Transactions      []*Transaction `json:"transactions"`      // DANH SÁCH GIAO DỊCH
     MerkleRoot        []byte         `json:"merkle_root"`
     PreviousBlockHash []byte         `json:"previous_block_hash"`
     CurrentBlockHash  []byte         `json:"current_block_hash"`
 }
 ```
 
-**Cấu trúc Block:**
+**🎯 4 Yêu Cầu Cốt Lõi:**
 
-- **Index**: Số thứ tự block trong chain
-- **Timestamp**: Thời gian tạo block
-- **Transactions**: Danh sách giao dịch trong block
-- **MerkleRoot**: Hash gốc của Merkle Tree
-- **PreviousBlockHash**: Hash của block trước (tạo chain)
-- **CurrentBlockHash**: Hash của block hiện tại
+1. **📝 Danh sách giao dịch** (`Transactions`): Tập hợp các giao dịch hợp lệ
+2. **🌳 Merkle Root** (`MerkleRoot`): Hash đại diện cho tất cả transactions
+3. **🔗 Previous Block Hash** (`PreviousBlockHash`): Liên kết với block trước
+4. **🔐 Current Block Hash** (`CurrentBlockHash`): Hash duy nhất của block này
 
 ```go
-func (b *Block) Hash() []byte {
-    // Tạo bản sao block không có current hash
-    blockCopy := *b
-    blockCopy.CurrentBlockHash = nil
+// NewBlock tạo block mới theo yêu cầu tối giản
+func NewBlock(index int, transactions []*Transaction, prevHash []byte) *Block {
+    block := &Block{
+        Index:             index,
+        Timestamp:         time.Now().Unix(),
+        Transactions:      transactions,        // Lưu danh sách giao dịch
+        PreviousBlockHash: prevHash,           // Link với block trước
+    }
 
-    // Serialize và hash
-    data, _ := json.Marshal(blockCopy)
+    // Tính Merkle Root từ transactions
+    block.calculateMerkleRoot()
+
+    // Tính Current Block Hash
+    block.calculateHash()
+
+    return block
+}
+```
+
+**Quy trình tạo Block:**
+
+1. **Khởi tạo**: Tạo block với transactions và previous hash
+2. **Merkle Root**: Tính toán từ tất cả transaction hashes
+3. **Block Hash**: Tính hash của toàn bộ block data
+4. **Validation**: Kiểm tra tính hợp lệ trước khi lưu
+
+```go
+// calculateMerkleRoot tính Merkle Root từ transactions
+func (b *Block) calculateMerkleRoot() {
+    if len(b.Transactions) == 0 {
+        b.MerkleRoot = []byte{}
+        return
+    }
+
+    // Lấy hash của tất cả transactions
+    var txHashes [][]byte
+    for _, tx := range b.Transactions {
+        hash, err := tx.Hash()
+        if err != nil {
+            continue
+        }
+        txHashes = append(txHashes, hash)
+    }
+
+    // Tạo Merkle Tree và lấy root
+    merkleTree := NewMerkleTree(txHashes)
+    b.MerkleRoot = merkleTree.GetRoot()
+}
+```
+
+**Tại sao cần Merkle Root?**
+
+- **Integrity Check**: Kiểm tra không có transaction nào bị thay đổi
+- **Efficient Verification**: Chỉ cần so sánh 1 hash thay vì tất cả transactions
+- **Tamper Evidence**: Thay đổi bất kỳ transaction nào sẽ thay đổi Merkle Root
+
+```go
+// calculateHash tính Current Block Hash
+func (b *Block) calculateHash() {
+    // Tạo struct chỉ chứa data cần hash (không bao gồm CurrentBlockHash)
+    blockData := struct {
+        Index             int            `json:"index"`
+        Timestamp         int64          `json:"timestamp"`
+        Transactions      []*Transaction `json:"transactions"`
+        MerkleRoot        []byte         `json:"merkle_root"`
+        PreviousBlockHash []byte         `json:"previous_block_hash"`
+    }{
+        Index:             b.Index,
+        Timestamp:         b.Timestamp,
+        Transactions:      b.Transactions,
+        MerkleRoot:        b.MerkleRoot,
+        PreviousBlockHash: b.PreviousBlockHash,
+    }
+
+    data, err := json.Marshal(blockData)
+    if err != nil {
+        return
+    }
+
     hash := sha256.Sum256(data)
-    return hash[:]
+    b.CurrentBlockHash = hash[:]
 }
 ```
 
-**Blockchain Chain:**
+**Tại sao không hash CurrentBlockHash?**
 
-```
-Genesis Block → Block 1 → Block 2 → Block 3 → ...
-     ↑            ↑         ↑         ↑
-   Hash A      Hash B    Hash C    Hash D
-              (chứa A)  (chứa B)  (chứa C)
-```
+- **Circular Reference**: CurrentBlockHash là kết quả của việc hash, không thể tự hash chính nó
+- **Deterministic**: Cùng block data → cùng hash
 
 ---
 
-### 6. 💾 pkg/storage/leveldb.go - Lưu Trữ
+### 6. 🔍 Block Validation - Xác Thực Block
 
 ```go
-type LevelDB struct {
-    db *leveldb.DB
-}
-
-func NewLevelDB(path string) (*LevelDB, error) {
-    db, err := leveldb.OpenFile(path, nil)
-    if err != nil {
-        return nil, fmt.Errorf("failed to open leveldb: %w", err)
-    }
-    return &LevelDB{db: db}, nil
-}
-```
-
-**LevelDB là gì?**
-
-- **Key-Value Store**: Lưu trữ dạng key-value
-- **Persistent**: Dữ liệu lưu trên disk, không mất khi tắt máy
-- **Ordered**: Keys được sắp xếp tự động
-- **Fast**: Tối ưu cho read/write operations
-
-```go
-func (ldb *LevelDB) SaveBlock(block *blockchain.Block) error {
-    // Serialize block thành JSON
-    blockBytes, err := json.Marshal(block)
-    if err != nil {
-        return fmt.Errorf("failed to marshal block: %w", err)
+// IsValid kiểm tra tính hợp lệ của block theo yêu cầu
+func (b *Block) IsValid() bool {
+    // 1. Kiểm tra Merkle Root integrity
+    var txHashes [][]byte
+    for _, tx := range b.Transactions {
+        hash, err := tx.Hash()
+        if err != nil {
+            return false
+        }
+        txHashes = append(txHashes, hash)
     }
 
-    // Lưu với key là hash của block
-    key := block.CurrentBlockHash
-    if err := ldb.db.Put(key, blockBytes, nil); err != nil {
-        return fmt.Errorf("failed to save block: %w", err)
+    merkleTree := NewMerkleTree(txHashes)
+    calculatedRoot := merkleTree.GetRoot()
+
+    // 2. So sánh calculated vs stored Merkle Root
+    if len(calculatedRoot) != len(b.MerkleRoot) {
+        return false
     }
-
-    // Lưu mapping index → hash để dễ truy xuất
-    indexKey := []byte(fmt.Sprintf("index_%d", block.Index))
-    return ldb.db.Put(indexKey, key, nil)
-}
-```
-
-**Storage Strategy:**
-
-- **Primary Key**: Hash của block → Full block data
-- **Index Key**: Index number → Hash (để tìm block theo số thứ tự)
-- **Redundant but Fast**: Lưu 2 lần nhưng truy xuất nhanh
-
----
-
-### 7. ⚡ pkg/validator/node.go - Node Xác Thực
-
-```go
-type ValidatorNode struct {
-    storage     *storage.LevelDB
-    blockchain  []*blockchain.Block
-    currentIndex int
-}
-```
-
-**Validator Node làm gì?**
-
-- **Validate Transactions**: Kiểm tra chữ ký và tính hợp lệ
-- **Create Blocks**: Tạo block mới từ transactions
-- **Store Blocks**: Lưu blocks vào database
-- **Maintain Chain**: Duy trì tính liên tục của blockchain
-
-```go
-func (vn *ValidatorNode) CreateBlock(transactions []*blockchain.Transaction) (*blockchain.Block, error) {
-    // Xác thực tất cả transactions
-    for _, tx := range transactions {
-        if !vn.isValidTransaction(tx) {
-            return nil, fmt.Errorf("invalid transaction")
+    for i := range calculatedRoot {
+        if calculatedRoot[i] != b.MerkleRoot[i] {
+            return false
         }
     }
 
-    // Tạo Merkle Tree từ transaction hashes
-    var txHashes [][]byte
-    for _, tx := range transactions {
-        txHashes = append(txHashes, tx.Hash())
+    // 3. Kiểm tra Current Block Hash integrity
+    originalHash := make([]byte, len(b.CurrentBlockHash))
+    copy(originalHash, b.CurrentBlockHash)
+
+    b.calculateHash()
+
+    for i := range originalHash {
+        if originalHash[i] != b.CurrentBlockHash[i] {
+            return false
+        }
     }
-    merkleTree := blockchain.NewMerkleTree(txHashes)
+
+    return true
+}
+```
+
+**Validation Process:**
+
+1. **Merkle Root Check**: Tính lại Merkle Root từ transactions và so sánh
+2. **Block Hash Check**: Tính lại block hash và so sánh
+3. **Data Integrity**: Đảm bảo không có dữ liệu nào bị thay đổi
+
+### 7. 🏛️ pkg/validator/node.go - Validator Node
+
+```go
+// ValidatorNode đơn giản - chỉ tập trung vào yêu cầu đề bài:
+// - Lưu trữ blocks trong LevelDB
+// - Xác thực bằng Merkle Tree
+type ValidatorNode struct {
+    storage *storage.BlockStorage
+}
+```
+
+**Validator Node nhiệm vụ:**
+
+- **Create Blocks**: Tạo block mới từ transactions
+- **Validate Blocks**: Kiểm tra tính hợp lệ bằng Merkle Tree
+- **Store Blocks**: Lưu trữ vào LevelDB
+
+```go
+// CreateBlock tạo block mới từ transactions (core functionality)
+func (vn *ValidatorNode) CreateBlock(transactions []*blockchain.Transaction) (*blockchain.Block, error) {
+    // Lấy previous block hash nếu có
+    var prevHash []byte
+    latestIndex, err := vn.storage.GetLatestIndex()
+    if err == nil && latestIndex >= 0 {
+        prevBlock, err := vn.storage.GetBlockByIndex(latestIndex)
+        if err == nil {
+            prevHash = prevBlock.CurrentBlockHash  // Link to previous block
+        }
+    }
 
     // Tạo block mới
-    newBlock := &blockchain.Block{
-        Index:             vn.currentIndex,
-        Timestamp:         time.Now().Unix(),
-        Transactions:      transactions,
-        MerkleRoot:        merkleTree.Root.Data,
-        PreviousBlockHash: vn.getLastBlockHash(),
+    newBlock := blockchain.NewBlock(latestIndex+1, transactions, prevHash)
+
+    // Xác thực bằng Merkle Tree (yêu cầu đề bài)
+    if !newBlock.IsValid() {
+        return nil, fmt.Errorf("block invalid - Merkle Tree verification failed")
     }
 
-    // Tính hash cho block
-    newBlock.CurrentBlockHash = newBlock.Hash()
-
-    // Lưu block
+    // Lưu trữ vào LevelDB (yêu cầu đề bài)
     if err := vn.storage.SaveBlock(newBlock); err != nil {
-        return nil, err
+        return nil, fmt.Errorf("failed to save block: %w", err)
     }
 
-    // Cập nhật local blockchain
-    vn.blockchain = append(vn.blockchain, newBlock)
-    vn.currentIndex++
+    // Lưu index mapping
+    if err := vn.storage.StoreBlockByIndex(newBlock); err != nil {
+        return nil, fmt.Errorf("failed to store block index: %w", err)
+    }
 
     return newBlock, nil
 }
 ```
 
-**Block Creation Process:**
+**Block Creation Flow:**
 
-1. **Validate**: Kiểm tra từng transaction
-2. **Merkle**: Tạo Merkle Tree từ transaction hashes
-3. **Link**: Liên kết với block trước bằng hash
-4. **Hash**: Tính hash cho block hiện tại
-5. **Store**: Lưu vào database
-6. **Update**: Cập nhật local chain
+1. **Get Previous Hash**: Lấy hash của block trước đó
+2. **Create New Block**: Khởi tạo block với transactions
+3. **Validate**: Kiểm tra Merkle Tree và block hash
+4. **Store**: Lưu vào LevelDB
+5. **Index**: Tạo mapping index → hash để tìm kiếm nhanh
 
----
-
-### 8. 🖥️ cmd/main.go - CLI Interface
+### 8. 💾 pkg/storage/leveldb.go - Database Storage
 
 ```go
-func runAliceBobDemo() {
-    // Tạo validator
-    validator, err := validator.NewValidatorNode("./demo_blockchain")
-
-    // Tạo Alice's wallet
-    alicePriv, _ := wallet.GenerateKeyPair()
-    aliceAddr := wallet.PublicKeyToAddress(&alicePriv.PublicKey)
-
-    // Tạo Bob's wallet
-    bobPriv, _ := wallet.GenerateKeyPair()
-    bobAddr := wallet.PublicKeyToAddress(&bobPriv.PublicKey)
-
-    // Alice gửi tiền cho Bob
-    tx1 := &blockchain.Transaction{
-        Sender:    aliceAddr,
-        Receiver:  bobAddr,
-        Amount:    50.0,
-        Timestamp: time.Now().Unix(),
-    }
-    wallet.SignTransaction(tx1, alicePriv)
-
-    // Tạo block
-    block1, _ := validator.CreateBlock([]*blockchain.Transaction{tx1})
+// BlockStorage quản lý việc lưu trữ blocks trong LevelDB
+type BlockStorage struct {
+    db *leveldb.DB
 }
 ```
 
-**Demo Flow:**
+**LevelDB Features:**
 
-1. **Setup**: Tạo validator node và wallets
-2. **Create Transaction**: Alice → Bob
-3. **Sign**: Alice ký transaction bằng private key
-4. **Verify**: Validator xác thực chữ ký
-5. **Block**: Tạo block chứa transaction
-6. **Store**: Lưu block vào LevelDB
+- **Key-Value Store**: Lưu trữ dạng key-value
+- **Persistent**: Dữ liệu không mất khi restart
+- **Fast**: Tối ưu cho read/write operations
+- **Embedded**: Không cần database server riêng
+
+```go
+// SaveBlock lưu block vào LevelDB với block hash làm key
+func (bs *BlockStorage) SaveBlock(block *blockchain.Block) error {
+    blockBytes, err := json.Marshal(block)  // Serialize to JSON
+    if err != nil {
+        return fmt.Errorf("failed to marshal block: %w", err)
+    }
+
+    // Sử dụng CurrentBlockHash làm key
+    return bs.db.Put(block.CurrentBlockHash, blockBytes, nil)
+}
+```
+
+**Storage Strategy:**
+
+- **Hash as Key**: Dùng block hash làm primary key
+- **JSON Serialization**: Serialize block thành JSON
+- **Dual Indexing**: Lưu cả hash-based và index-based lookup
+
+```go
+// StoreBlockByIndex lưu block với index làm key (để tìm theo height)
+func (bs *BlockStorage) StoreBlockByIndex(block *blockchain.Block) error {
+    key := "height_" + strconv.Itoa(block.Index)
+
+    // Chỉ lưu hash, không lưu toàn bộ block để tiết kiệm space
+    return bs.db.Put([]byte(key), block.CurrentBlockHash, nil)
+}
+```
+
+**Index Mapping:**
+
+- **Height → Hash**: Mapping từ block height sang block hash
+- **Space Efficient**: Chỉ lưu hash, không duplicate block data
+- **Fast Lookup**: Tìm block theo index O(1)
+
+```
 
 ---
 
@@ -478,15 +550,19 @@ func runAliceBobDemo() {
 ### 1. **Digital Signature (Chữ Ký Số)**
 
 ```
+
 Private Key → Sign Transaction → Signature
 Public Key + Signature + Transaction → Verify → True/False
+
 ```
 
 ### 2. **Hash Function (Hàm Hash)**
 
 ```
+
 Input: "Hello World"
 SHA-256: a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e
+
 ```
 
 **Tính chất:**
@@ -498,18 +574,22 @@ SHA-256: a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e
 ### 3. **Merkle Tree**
 
 ```
+
       Root Hash
      /         \
-  Hash12      Hash34
-  /    \      /    \
+
+Hash12 Hash34
+/ \ / \
 Hash1 Hash2 Hash3 Hash4
-  |     |     |     |
- Tx1   Tx2   Tx3   Tx4
+| | | |
+Tx1 Tx2 Tx3 Tx4
+
 ```
 
 ### 4. **Blockchain Structure**
 
 ```
+
 Block 0 (Genesis)
 ├── Index: 0
 ├── Transactions: []
@@ -527,7 +607,8 @@ Block 2
 ├── Transactions: [Tx3]
 ├── PrevHash: DEF456 ← Links to Block 1
 └── Hash: GHI789
-```
+
+````
 
 ---
 
@@ -544,7 +625,7 @@ pubKey := privKey.PublicKey
 
 // Tạo address từ public key
 address := SHA256(pubKey.X + pubKey.Y)[:20]
-```
+````
 
 ### 2. **Tạo Transaction**
 
@@ -661,3 +742,185 @@ isValid := VerifyTransaction(tx, publicKey) // Should be false
 ---
 
 _📝 File này được tạo để giúp người mới bắt đầu hiểu rõ cách blockchain hoạt động thông qua code thực tế. Hãy đọc từng phần một cách cẩn thận và thực hành các ví dụ!_
+
+## 🚀 Demo và CLI Usage
+
+### CLI Commands Available
+
+```bash
+# Tạo wallet cho user
+cli.exe create
+
+# Tạo wallet cho Alice
+cli.exe create-alice
+
+# Tạo wallet cho Bob
+cli.exe create-bob
+
+# Alice gửi tiền cho Bob
+cli.exe alice-to-bob 50.0
+
+# Gửi tiền đến địa chỉ bất kỳ
+cli.exe send <receiver_address> <amount>
+
+# Chạy demo Alice-Bob hoàn chình
+cli.exe demo
+
+# Khởi tạo blockchain
+cli.exe init
+
+# Kiểm tra số lượng blocks
+cli.exe count
+
+# Hiển thị help
+cli.exe help
+```
+
+### 🎯 Demo Alice-Bob Flow
+
+```go
+func runAliceBobDemo() {
+    fmt.Println("🚀 Running Alice & Bob Demo...")
+
+    // 1. Tạo validator
+    validator, err := validator.NewValidatorNode("./demo_blockchain")
+
+    // 2. Tạo wallet cho Alice
+    alicePriv, err := wallet.GenerateKeyPair()
+    aliceAddr := wallet.PublicKeyToAddress(&alicePriv.PublicKey)
+
+    // 3. Tạo wallet cho Bob
+    bobPriv, err := wallet.GenerateKeyPair()
+    bobAddr := wallet.PublicKeyToAddress(&bobPriv.PublicKey)
+
+    // 4. Alice gửi 50 coins cho Bob
+    tx1 := &blockchain.Transaction{
+        Sender:    aliceAddr,
+        Receiver:  bobAddr,
+        Amount:    50.0,
+        Timestamp: time.Now().Unix(),
+    }
+
+    // 5. Alice ký transaction
+    wallet.SignTransaction(tx1, alicePriv)
+
+    // 6. Tạo block đầu tiên
+    block1, err := validator.CreateBlock([]*blockchain.Transaction{tx1})
+
+    // 7. Bob gửi lại 20 coins cho Alice
+    tx2 := &blockchain.Transaction{
+        Sender:    bobAddr,
+        Receiver:  aliceAddr,
+        Amount:    20.0,
+        Timestamp: time.Now().Unix() + 1,
+    }
+
+    // 8. Bob ký transaction
+    wallet.SignTransaction(tx2, bobPriv)
+
+    // 9. Tạo block thứ hai (linked với block 1)
+    block2, err := validator.CreateBlock([]*blockchain.Transaction{tx2})
+
+    fmt.Println("🎉 Demo completed successfully!")
+}
+```
+
+### 📊 Blockchain Statistics
+
+```bash
+# Kết quả demo
+🔗 Main Blockchain (blockchain_data):
+📦 Total blocks: 0
+📭 No blocks found
+
+🎯 Demo Blockchain (demo_blockchain):
+📦 Total blocks: 2
+🏷️  Latest block index: 1
+📋 Block details:
+   Block 0: 1 transactions, hash: a1b2c3d4
+   Block 1: 1 transactions, hash: e5f6g7h8
+```
+
+## 🔄 Complete Workflow
+
+### 1. 🔧 System Initialization
+
+```mermaid
+graph TD
+    A[Start CLI] --> B[Parse Command]
+    B --> C{Command Type?}
+    C -->|create-alice| D[Generate Alice Wallet]
+    C -->|create-bob| E[Generate Bob Wallet]
+    C -->|demo| F[Run Full Demo]
+    C -->|alice-to-bob| G[Process Transaction]
+```
+
+### 2. 💰 Transaction Process
+
+```mermaid
+graph TD
+    A[Create Transaction] --> B[Sign with Private Key]
+    B --> C[Verify Signature]
+    C --> D{Valid?}
+    D -->|Yes| E[Add to Block]
+    D -->|No| F[Reject Transaction]
+    E --> G[Calculate Merkle Root]
+    G --> H[Calculate Block Hash]
+    H --> I[Validate Block]
+    I --> J[Save to LevelDB]
+```
+
+### 3. 📦 Block Creation Detail
+
+```mermaid
+graph TD
+    A[New Transactions] --> B[Get Previous Block Hash]
+    B --> C[Create Block Instance]
+    C --> D[Set Index & Timestamp]
+    D --> E[Add Transactions List]
+    E --> F[Calculate Merkle Root]
+    F --> G[Calculate Block Hash]
+    G --> H[Validate Block]
+    H --> I{Valid?}
+    I -->|Yes| J[Save to Database]
+    I -->|No| K[Return Error]
+    J --> L[Create Index Mapping]
+    L --> M[Return Block]
+```
+
+### 4. 🏗️ Merkle Tree Construction
+
+```
+Transactions: [TX1, TX2, TX3, TX4]
+
+Step 1: Hash all transactions
+H1 = hash(TX1)  H2 = hash(TX2)  H3 = hash(TX3)  H4 = hash(TX4)
+
+Step 2: Pair and hash
+H12 = hash(H1 + H2)     H34 = hash(H3 + H4)
+
+Step 3: Final root
+ROOT = hash(H12 + H34)
+
+Tree Structure:
+        ROOT
+       /    \
+    H12      H34
+   /  \     /  \
+  H1   H2  H3   H4
+  |    |   |    |
+ TX1  TX2 TX3  TX4
+```
+
+### 5. 💾 LevelDB Storage Layout
+
+```
+Keys:
+- Block Hash → Block Data (JSON)
+- "height_0" → Block 0 Hash
+- "height_1" → Block 1 Hash
+- "height_N" → Block N Hash
+
+Example:
+- a1b2c3d4... → {"index":0,"transactions":[...],"merkle_root":"..."}
+```

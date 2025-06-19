@@ -16,8 +16,13 @@ type Block struct {
 	CurrentBlockHash  []byte         `json:"current_block_hash"`
 }
 
-// NewBlock tạo block mới theo yêu cầu tối giản
+// NewBlock tạo block mới khi đủ 5 giao dịch
 func NewBlock(index int, transactions []*Transaction, prevHash []byte) *Block {
+	// Kiểm tra số lượng transactions tối thiểu
+	if len(transactions) < 5 {
+		return nil // Không tạo block nếu chưa đủ 5 giao dịch
+	}
+
 	block := &Block{
 		Index:             index,
 		Timestamp:         time.Now().Unix(),
@@ -34,8 +39,8 @@ func NewBlock(index int, transactions []*Transaction, prevHash []byte) *Block {
 	return block
 }
 
-// calculateMerkleRoot tính Merkle Root từ transactions
-func (b *Block) calculateMerkleRoot() {
+// CalculateMerkleRoot tính Merkle Root từ transactions (exported method)
+func (b *Block) CalculateMerkleRoot() {
 	if len(b.Transactions) == 0 {
 		b.MerkleRoot = []byte{}
 		return
@@ -56,8 +61,13 @@ func (b *Block) calculateMerkleRoot() {
 	b.MerkleRoot = merkleTree.GetRoot()
 }
 
-// calculateHash tính Current Block Hash
-func (b *Block) calculateHash() {
+// calculateMerkleRoot tính Merkle Root từ transactions (unexported method for internal use)
+func (b *Block) calculateMerkleRoot() {
+	b.CalculateMerkleRoot()
+}
+
+// CalculateHash tính Current Block Hash (exported method)
+func (b *Block) CalculateHash() {
 	// Tạo struct chỉ chứa data cần hash (không bao gồm CurrentBlockHash)
 	blockData := struct {
 		Index             int            `json:"index"`
@@ -80,6 +90,11 @@ func (b *Block) calculateHash() {
 
 	hash := sha256.Sum256(data)
 	b.CurrentBlockHash = hash[:]
+}
+
+// calculateHash tính Current Block Hash (unexported method for internal use)
+func (b *Block) calculateHash() {
+	b.CalculateHash()
 }
 
 // IsValid kiểm tra tính hợp lệ của block theo yêu cầu

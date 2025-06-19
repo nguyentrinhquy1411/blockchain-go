@@ -1,52 +1,134 @@
-# Blockchain CLI Usage Guide
+# 🖥️ Blockchain CLI Usage Guide
 
-Đây là hướng dẫn sử dụng CLI cho blockchain project của bạn thông qua `run.bat`.
+Hướng dẫn sử dụng CLI cho blockchain project. CLI này cung cấp đầy đủ các chức năng để tương tác với blockchain.
 
 ## 📚 Tài Liệu Liên Quan
 
+- **[BLOCKCHAIN_EXPLAINED.md](BLOCKCHAIN_EXPLAINED.md)** - Giải thích code chi tiết từng phần
 - **[DATA_STRUCTURE.md](DATA_STRUCTURE.md)** - Chi tiết về cấu trúc dữ liệu và LevelDB
-- **[BLOCKCHAIN_EXPLAINED.md](BLOCKCHAIN_EXPLAINED.md)** - Giải thích code từng phần
 - **[BLOCKCHAIN_CHEATSHEET.md](BLOCKCHAIN_CHEATSHEET.md)** - Tóm tắt các khái niệm
 - **[QUICK_START.md](QUICK_START.md)** - Hướng dẫn học blockchain
 - **[CODE_REFERENCE.md](CODE_REFERENCE.md)** - Bản đồ tham chiếu code
 
-## 🔧 Cài Đặt và Build
+## 🔧 Setup và Commands
 
-### ⚠️ Quy Tắc Quan Trọng
-
-**CHỈ sử dụng `./run.bat` - KHÔNG gọi trực tiếp `./cli.exe`!**
+### ⚡ Quick Commands
 
 ```bash
 # Build project
-./run.bat build
+go build -o cli.exe cmd/main.go
+
+# Hoặc sử dụng run.bat (Windows)
+run.bat build
 
 # Xem tất cả commands
-./run.bat
+cli.exe help
 ```
 
-### Kiểm tra cài đặt
-
-```bash
-# Xem danh sách commands có sẵn
-./run.bat
-
-# Build và test demo
-./run.bat demo
-```
-
-## 🚀 Quick Start
+## 🚀 Quick Start Guide
 
 ### 1. Build Project
 
 ```bash
-./run.bat build
+go build -o cli.exe cmd/main.go
 ```
 
-### 2. Chạy Demo Alice & Bob
+### 2. Run Alice & Bob Demo
 
 ```bash
-./run.bat demo
+cli.exe demo
 ```
+
+**Demo sẽ tự động:**
+
+- 👩 Tạo wallet cho Alice
+- 👨 Tạo wallet cho Bob
+- 💰 Alice gửi 50 coins cho Bob
+- 💰 Bob gửi 20 coins về Alice
+- 📦 Tạo 2 blocks với chữ ký hợp lệ
+- 💾 Lưu vào `demo_blockchain/`
+
+### 3. Kiểm tra kết quả
+
+```bash
+cli.exe count
+```
+
+## 📋 Available Commands
+
+### 🔑 Wallet Management
+
+#### Create User Wallet
+
+```bash
+cli.exe create
+```
+
+- Tạo wallet mới cho user
+- Lưu private key vào `user_key.json`
+- Hiển thị address
+
+#### Create Alice's Wallet
+
+```bash
+cli.exe create-alice
+```
+
+- Tạo wallet cho Alice
+- Lưu vào `alice_key.json`
+- Dùng cho demo và testing
+
+#### Create Bob's Wallet
+
+```bash
+cli.exe create-bob
+```
+
+- Tạo wallet cho Bob
+- Lưu vào `bob_key.json`
+- Dùng cho demo và testing
+
+### 💸 Transaction Commands
+
+#### Alice to Bob Transaction
+
+```bash
+cli.exe alice-to-bob <amount>
+
+# Ví dụ:
+cli.exe alice-to-bob 25.5
+cli.exe alice-to-bob 100
+```
+
+**Yêu cầu:**
+
+- `alice_key.json` phải tồn tại
+- `bob_key.json` phải tồn tại
+- Amount phải là số dương
+
+**Process:**
+
+1. Load Alice's private key
+2. Load Bob's address
+3. Tạo transaction
+4. Alice ký transaction
+5. Verify signature
+6. Tạo block và lưu vào `blockchain_data/`
+
+#### Send to Any Address
+
+```bash
+cli.exe send <receiver_address> <amount>
+
+# Ví dụ:
+cli.exe send a1b2c3d4e5f6... 50.0
+```
+
+**Yêu cầu:**
+
+- `user_key.json` phải tồn tại (run `cli.exe create` trước)
+- Receiver address phải hợp lệ (hex format)
+- Amount phải là số dương
 
 ### 3. Tạo Wallet Riêng Biệt
 
@@ -75,6 +157,7 @@
 ./run.bat build    # Build CLI executable
 ./run.bat clean    # Xóa tất cả files được tạo
 ./run.bat help     # Hiển thị CLI help
+./run.bat init     # Khởi tạo blockchain
 ```
 
 ### 👤 Wallet Management
@@ -88,8 +171,8 @@
 ### 💸 Transactions
 
 ```bash
-./run.bat alice-to-bob <amount>  # Alice gửi tiền cho Bob
-./run.bat send <address> <amount>  # Gửi từ wallet chung
+./run.bat alice-to-bob <amount>       # Alice gửi tiền cho Bob
+./run.bat send <address> <amount>     # Gửi từ wallet chung
 
 # Ví dụ:
 ./run.bat alice-to-bob 75.5
@@ -99,8 +182,7 @@
 ### 🎮 Demo & Testing
 
 ```bash
-./run.bat demo  # Chạy demo Alice & Bob đầy đủ
-./run.bat init  # Khởi tạo blockchain
+./run.bat demo     # Chạy demo Alice & Bob đầy đủ
 ```
 
 ## 📊 Workflows Thực Tế

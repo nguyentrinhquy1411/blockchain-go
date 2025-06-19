@@ -3,32 +3,70 @@
 ## 📖 Mục Lục
 
 1. [Tổng Quan Data Storage](#tổng-quan-data-storage)
-2. [LevelDB Database Structure](#leveldb-database-structure)
-3. [Key-Value Mapping](#key-value-mapping)
-4. [File Structure Chi Tiết](#file-structure-chi-tiết)
-5. [Code Implementation](#code-implementation)
-6. [Data Flow](#data-flow)
+2. [Block Structure](#block-structure)
+3. [LevelDB Database Structure](#leveldb-database-structure)
+4. [Key-Value Mapping](#key-value-mapping)
+5. [File Structure Chi Tiết](#file-structure-chi-tiết)
+6. [Code Implementation](#code-implementation)
+7. [Data Flow](#data-flow)
 
 ---
 
 ## 🎯 Tổng Quan Data Storage
 
-Blockchain của bạn sử dụng **LevelDB** - một key-value database để lưu trữ:
+Blockchain này sử dụng **LevelDB** - một embedded key-value database để lưu trữ:
 
-- **Blocks** - Các khối chứa transactions
-- **Index mapping** - Mapping từ block index → block hash
-- **Metadata** - Thông tin database
+- **📦 Blocks** - Các khối chứa danh sách transactions
+- **🔗 Index mapping** - Mapping từ block height → block hash
+- **🌳 Merkle Trees** - Xác thực tính toàn vẹn transactions
+- **🔐 Signatures** - Chữ ký ECDSA cho mỗi transaction
 
 ### Code Location:
 
 ```go
-// pkg/storage/leveldb.go - Line 15-25
-func NewLevelDB(path string) (*LevelDB, error) {
-    db, err := leveldb.OpenFile(path, nil)  // ← Tạo/mở database folder
+// pkg/storage/leveldb.go - Line 19-26
+func NewBlockStorage(dbPath string) (*BlockStorage, error) {
+    db, err := leveldb.OpenFile(dbPath, nil)  // ← Tạo/mở database folder
     if err != nil {
         return nil, fmt.Errorf("failed to open leveldb: %w", err)
     }
-    return &LevelDB{db: db}, nil
+    return &BlockStorage{db: db}, nil
+}
+```
+
+---
+
+## 📦 Block Structure
+
+### Block Data Structure
+
+```go
+type Block struct {
+    Index             int            `json:"index"`              // Block height
+    Timestamp         int64          `json:"timestamp"`          // Unix timestamp
+    Transactions      []*Transaction `json:"transactions"`       // DANH SÁCH GIAO DỊCH
+    MerkleRoot        []byte         `json:"merkle_root"`        // Merkle tree root
+    PreviousBlockHash []byte         `json:"previous_block_hash"`// Link to previous block
+    CurrentBlockHash  []byte         `json:"current_block_hash"` // This block's hash
+}
+```
+
+**🎯 4 Yêu Cầu Cốt Lõi được implement:**
+
+1. **📝 Danh sách giao dịch** - `Transactions` field
+2. **🌳 Merkle Root** - `MerkleRoot` field
+3. **🔗 Previous Block Hash** - `PreviousBlockHash` field
+4. **🔐 Current Block Hash** - `CurrentBlockHash` field
+
+### Transaction Structure
+
+```go
+type Transaction struct {
+    Sender    []byte  // Address của người gửi (20 bytes)
+    Receiver  []byte  // Address của người nhận (20 bytes)
+    Amount    float64 // Số tiền
+    Timestamp int64   // Thời gian tạo transaction
+    Signature []byte  // ECDSA signature (r + s)
 }
 ```
 
@@ -36,30 +74,41 @@ func NewLevelDB(path string) (*LevelDB, error) {
 
 ## 🗂️ LevelDB Database Structure
 
+### Database Directories Created:
+
+```
+blockchain_data/          ← Main blockchain (production)
+demo_blockchain/          ← Demo blockchain (testing)
+```
+
 ### Folder Structure:
 
 ```
 demo_blockchain/          ← Database directory
-├── LOCK                 ← Process lock file
-├── CURRENT              ← Active manifest pointer
-├── MANIFEST-000000      ← Database metadata
-├── LOG                  ← Operation logs
-└── 000001.log          ← Write-ahead log (actual data)
+├── 000004.log          ← Write-ahead log (actual data)
+├── CURRENT             ← Active manifest pointer
+├── CURRENT.bak         ← Backup of CURRENT
+├── LOCK                ← Process lock file
+├── LOG                 ← Operation logs
+└── MANIFEST-000005     ← Database metadata
 ```
 
 ### Code Location:
 
 ```go
-// cmd/main.go - Line 140
+// cmd/main.go - Line 379 (runAliceBobDemo)
 validator, err := validator.NewValidatorNode("./demo_blockchain")
 
-// pkg/validator/node.go - Line 20-25
+// cmd/main.go - Line 294 (aliceToBobTransaction)
+validator, err := validator.NewValidatorNode("./blockchain_data")
+
+// pkg/validator/node.go - Line 19-26
 func NewValidatorNode(dbPath string) (*ValidatorNode, error) {
-    storage, err := storage.NewLevelDB(dbPath)  // ← Tạo folder này
+    storage, err := storage.NewBlockStorage(dbPath)  // ← Tạo folder này
     if err != nil {
         return nil, fmt.Errorf("failed to create storage: %w", err)
     }
-    // ...
+    return &ValidatorNode{storage: storage}, nil
 }
 ```
 
@@ -69,25 +118,39 @@ func NewValidatorNode(dbPath string) (*ValidatorNode, error) {
 
 LevelDB lưu data dưới dạng **key-value pairs**:
 
-### 1. Block Storage
+### 1. Block Storage (Primary)
 
 ```
 Key:   [block_hash]           (32 bytes SHA256)
 Value: [serialized_block]     (JSON của Block struct)
+
+Example:
+Key:   a1b2c3d4e5f6789abcdef...
+Value: {"index":0,"timestamp":1672531200,"transactions":[...],...}
 ```
 
-### 2. Index Mapping
+### 2. Index Mapping (Secondary)
 
 ```
-Key:   "index_0", "index_1", "index_2"...
+Key:   "height_0", "height_1", "height_2"...
 Value: [block_hash]           (32 bytes)
+
+Example:
+Key:   "height_0"
+Value: a1b2c3d4e5f6789abcdef...
 ```
+
+**Dual Storage Benefits:**
+
+- **Hash-based lookup**: Truy cập trực tiếp bằng block hash O(1)
+- **Index-based lookup**: Tìm block theo height O(1)
+- **Space efficient**: Index chỉ lưu hash, không duplicate data
 
 ### Code Implementation:
 
 ```go
-// pkg/storage/leveldb.go - Line 35-55
-func (ldb *LevelDB) SaveBlock(block *blockchain.Block) error {
+// pkg/storage/leveldb.go - Line 28-37
+func (bs *BlockStorage) SaveBlock(block *blockchain.Block) error {
     // 1. Serialize block thành JSON
     blockBytes, err := json.Marshal(block)
     if err != nil {
@@ -95,15 +158,83 @@ func (ldb *LevelDB) SaveBlock(block *blockchain.Block) error {
     }
 
     // 2. Lưu với key = block hash
-    key := block.CurrentBlockHash  // ← SHA256 hash làm key
-    if err := ldb.db.Put(key, blockBytes, nil); err != nil {
-        return fmt.Errorf("failed to save block: %w", err)
+    return bs.db.Put(block.CurrentBlockHash, blockBytes, nil)
+}
+
+// pkg/storage/leveldb.go - Line 55-60
+func (bs *BlockStorage) StoreBlockByIndex(block *blockchain.Block) error {
+    key := "height_" + strconv.Itoa(block.Index)
+
+    // Chỉ lưu hash, không lưu toàn bộ block để tiết kiệm space
+    return bs.db.Put([]byte(key), block.CurrentBlockHash, nil)
+}
+```
+
+## 📁 File Structure Chi Tiết
+
+### Real Data Files sau khi chạy demo:
+
+```
+blockchain-go/
+├── 🔧 cli.exe                     # Built executable
+├── 🔑 alice_key.json              # Alice's wallet
+├── 🔑 bob_key.json                # Bob's wallet
+├── 📁 blockchain_data/            # Main database
+│   ├── 000004.log                 # Data file
+│   ├── CURRENT                    # Manifest pointer
+│   ├── CURRENT.bak               # Backup
+│   ├── LOCK                      # Lock file
+│   ├── LOG                       # Operation log
+│   └── MANIFEST-000005           # Metadata
+├── 📁 demo_blockchain/           # Demo database
+│   ├── 000004.log               # Data file
+│   ├── CURRENT                  # Manifest pointer
+│   ├── CURRENT.bak             # Backup
+│   ├── LOCK                    # Lock file
+│   ├── LOG                     # Operation log
+│   └── MANIFEST-000005         # Metadata
+└── 📄 *.md files               # Documentation
+```
+
+### Key Files Explained:
+
+**🔑 Wallet Files (.json)**
+
+```json
+{
+  "private_key": "a1b2c3d4e5f6...",
+  "public_key_x": "b2c3d4e5f6g7...",
+  "public_key_y": "c3d4e5f6g7h8..."
+}
+```
+
+**📦 Block Data (trong .log files)**
+
+```json
+{
+  "index": 0,
+  "timestamp": 1672531200,
+  "transactions": [
+    {
+      "sender": "a1b2c3d4...",
+      "receiver": "b2c3d4e5...",
+      "amount": 50.0,
+      "timestamp": 1672531200,
+      "signature": "r_bytes + s_bytes"
     }
+  ],
+  "merkle_root": "f6g7h8i9...",
+  "previous_block_hash": null,
+  "current_block_hash": "e5f6g7h8..."
+}
+```
 
     // 3. Lưu index mapping: "index_0" → block_hash
     indexKey := []byte(fmt.Sprintf("index_%d", block.Index))
     return ldb.db.Put(indexKey, key, nil)
+
 }
+
 ```
 
 ---
@@ -113,17 +244,19 @@ func (ldb *LevelDB) SaveBlock(block *blockchain.Block) error {
 ### 1. **LOCK File**
 
 ```
+
 File: demo_blockchain/LOCK
 Content: (empty file)
 Purpose: Prevent concurrent access
-```
+
+````
 
 **Code tạo ra:**
 
 ```go
 // Khi gọi leveldb.OpenFile() - internal LevelDB code
 // Tự động tạo LOCK file để prevent multiple processes
-```
+````
 
 ### 2. **CURRENT File**
 
@@ -241,92 +374,54 @@ func (vn *ValidatorNode) CreateBlock(transactions []*blockchain.Transaction) (*b
 
 ## 🔄 Data Flow
 
-### 1. Demo Workflow:
+### 1. Block Creation Flow
 
-```
-cli.exe demo
-    ↓
-runAliceBobDemo() [cmd/main.go:140]
-    ↓
-validator.NewValidatorNode("./demo_blockchain") [pkg/validator/node.go:20]
-    ↓
-storage.NewLevelDB(dbPath) [pkg/storage/leveldb.go:15]
-    ↓
-leveldb.OpenFile(path, nil) ← Creates demo_blockchain/ folder
-```
-
-### 2. Block Creation Flow:
-
-```
-Alice Transaction Created [cmd/main.go:165]
-    ↓
-validator.CreateBlock([tx1]) [pkg/validator/node.go:65]
-    ↓
-storage.SaveBlock(newBlock) [pkg/storage/leveldb.go:35]
-    ↓
-db.Put(blockHash, blockJSON, nil) ← Writes to 000001.log
-    ↓
-db.Put("index_0", blockHash, nil) ← Index mapping
+```mermaid
+graph TD
+    A[New Transactions] --> B[Create Block Instance]
+    B --> C[Calculate Merkle Root]
+    C --> D[Calculate Block Hash]
+    D --> E[Validate Block]
+    E --> F{Valid?}
+    F -->|Yes| G[Save to LevelDB]
+    F -->|No| H[Return Error]
+    G --> I[Create Index Mapping]
+    I --> J[Block Created Successfully]
 ```
 
-### 3. File Creation Timeline:
-
-```
-Step 1: leveldb.OpenFile()
-├── Creates demo_blockchain/ folder
-├── Creates LOCK file (process lock)
-├── Creates CURRENT file (manifest pointer)
-├── Creates MANIFEST-000000 (metadata)
-└── Creates LOG file (operation log)
-
-Step 2: First SaveBlock()
-└── Creates 000001.log (write-ahead log with actual data)
-```
-
----
-
-## 🔍 Debugging Data
-
-### View Raw Data:
+### 2. Database Write Operations
 
 ```go
-// Add this function to cmd/main.go for debugging
-func debugDatabase() {
-    db, err := leveldb.OpenFile("./demo_blockchain", nil)
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer db.Close()
+// Step 1: Create block with transactions
+block := blockchain.NewBlock(index, transactions, prevHash)
 
-    fmt.Println("=== DATABASE CONTENTS ===")
-    iter := db.NewIterator(nil, nil)
-    for iter.Next() {
-        key := iter.Key()
-        value := iter.Value()
-
-        if strings.HasPrefix(string(key), "index_") {
-            fmt.Printf("Index Key: %s → Hash: %x\n", key, value)
-        } else {
-            fmt.Printf("Block Hash: %x\n", key)
-            fmt.Printf("Block Data: %s\n\n", value)
-        }
-    }
-    iter.Release()
+// Step 2: Validate (Merkle Tree + Hash verification)
+if !block.IsValid() {
+    return error
 }
+
+// Step 3: Save block data
+bs.db.Put(block.CurrentBlockHash, blockJSON, nil)
+
+// Step 4: Save index mapping
+key := "height_" + strconv.Itoa(block.Index)
+bs.db.Put([]byte(key), block.CurrentBlockHash, nil)
 ```
 
-### Read Specific Block:
+### 3. Database Read Operations
+
+#### Get Block by Hash
 
 ```go
-// pkg/storage/leveldb.go - Line 75-85
-func (ldb *LevelDB) GetBlock(hash []byte) (*blockchain.Block, error) {
-    data, err := ldb.db.Get(hash, nil)     // ← Read from 000001.log
+// pkg/storage/leveldb.go - Line 39-51
+func (bs *BlockStorage) GetBlock(hash []byte) (*blockchain.Block, error) {
+    blockBytes, err := bs.db.Get(hash, nil)
     if err != nil {
         return nil, fmt.Errorf("failed to get block: %w", err)
     }
 
     var block blockchain.Block
-    if err := json.Unmarshal(data, &block); err != nil {  // ← Deserialize JSON
+    if err := json.Unmarshal(blockBytes, &block); err != nil {
         return nil, fmt.Errorf("failed to unmarshal block: %w", err)
     }
 
@@ -334,90 +429,186 @@ func (ldb *LevelDB) GetBlock(hash []byte) (*blockchain.Block, error) {
 }
 ```
 
----
-
-## 📊 Storage Statistics
-
-### After Demo Completion:
-
-```
-Blocks Created: 2
-Total Keys: 4
-├── Block 0 hash → Block 0 data
-├── "index_0" → Block 0 hash
-├── Block 1 hash → Block 1 data
-└── "index_1" → Block 1 hash
-
-File Sizes (approx):
-├── LOCK: 0 bytes
-├── CURRENT: 15 bytes
-├── MANIFEST-000000: ~100 bytes
-├── LOG: ~500 bytes
-└── 000001.log: ~2KB (contains actual blocks)
-```
-
-### Code to Check Stats:
+#### Get Block by Index
 
 ```go
-// Add to CLI for monitoring
-func showStats() {
-    db, _ := leveldb.OpenFile("./demo_blockchain", nil)
-    defer db.Close()
-
-    count := 0
-    iter := db.NewIterator(nil, nil)
-    for iter.Next() {
-        count++
+// pkg/storage/leveldb.go - Line 63-72
+func (bs *BlockStorage) GetBlockByIndex(index int) (*blockchain.Block, error) {
+    key := "height_" + strconv.Itoa(index)
+    hash, err := bs.db.Get([]byte(key), nil)
+    if err != nil {
+        return nil, fmt.Errorf("failed to get block hash by index: %w", err)
     }
-    iter.Release()
 
-    fmt.Printf("Total keys in database: %d\n", count)
+    // Sau đó lấy block bằng hash
+    return bs.GetBlock(hash)
 }
 ```
 
----
+## 📊 Storage Statistics
 
-## ⚡ Performance Notes
+### Database Size Analysis
 
-### Write Performance:
+```bash
+# Sau khi chạy demo với 2 blocks:
+demo_blockchain/
+├── 000004.log    (~2KB)  # Chứa 2 blocks + metadata
+├── CURRENT       (16B)   # Manifest pointer
+├── LOCK          (0B)    # Lock file
+├── LOG           (~1KB)  # Operation logs
+└── MANIFEST-*    (~1KB)  # Database metadata
 
-```go
-// pkg/storage/leveldb.go - Write operations
-db.Put(key, value, nil)  // O(log N) - uses LSM trees
+Total: ~4KB cho 2 blocks
 ```
 
-### Read Performance:
+### Storage Efficiency
+
+- **Block size**: ~500-1000 bytes per block (tùy số transactions)
+- **Index overhead**: 32 bytes per block (chỉ hash)
+- **Compression**: LevelDB tự động compress data
+- **Disk I/O**: Batch writes cho hiệu suất cao
+
+### Data Retrieval Performance
+
+- **By Hash**: O(1) - Direct key lookup
+- **By Index**: O(1) - Index → Hash → Block (2 lookups)
+- **Latest Block**: O(n) - Scan all "height\_\*" keys (có thể optimize)
+- **Range Query**: O(log n) - LevelDB iterator support
+
+## 🔧 Database Operations
+
+### Core Operations trong Code
+
+#### Create & Save Block
 
 ```go
-// pkg/storage/leveldb.go - Read operations
-db.Get(key, nil)         // O(log N) - indexed lookup
+// pkg/validator/node.go - Line 30-58
+func (vn *ValidatorNode) CreateBlock(transactions []*blockchain.Transaction) (*blockchain.Block, error) {
+    // Get previous block hash
+    var prevHash []byte
+    latestIndex, err := vn.storage.GetLatestIndex()
+    if err == nil && latestIndex >= 0 {
+        prevBlock, err := vn.storage.GetBlockByIndex(latestIndex)
+        if err == nil {
+            prevHash = prevBlock.CurrentBlockHash
+        }
+    }
+
+    // Create new block
+    newBlock := blockchain.NewBlock(latestIndex+1, transactions, prevHash)
+
+    // Validate với Merkle Tree
+    if !newBlock.IsValid() {
+        return nil, fmt.Errorf("block invalid - Merkle Tree verification failed")
+    }
+
+    // Save to database
+    if err := vn.storage.SaveBlock(newBlock); err != nil {
+        return nil, fmt.Errorf("failed to save block: %w", err)
+    }
+
+    // Save index mapping
+    if err := vn.storage.StoreBlockByIndex(newBlock); err != nil {
+        return nil, fmt.Errorf("failed to store block index: %w", err)
+    }
+
+    return newBlock, nil
+}
 ```
 
-### Batch Operations:
+#### Get Latest Block Index
 
 ```go
-// For multiple blocks (not implemented yet)
-batch := new(leveldb.Batch)
-batch.Put(key1, value1)
-batch.Put(key2, value2)
-db.Write(batch, nil)     // Atomic batch write
+// pkg/storage/leveldb.go - Line 75-89
+func (bs *BlockStorage) GetLatestIndex() (int, error) {
+    iter := bs.db.NewIterator(nil, nil)
+    defer iter.Release()
+
+    latestIndex := -1
+    for iter.Next() {
+        key := string(iter.Key())
+        if len(key) > 7 && key[:7] == "height_" {
+            index, err := strconv.Atoi(key[7:])
+            if err == nil && index > latestIndex {
+                latestIndex = index
+            }
+        }
+    }
+
+    return latestIndex, nil
+}
 ```
 
----
+## 🔐 Data Integrity & Security
 
-## 🎯 Key Takeaways
+### Merkle Tree Validation
 
-1. **LevelDB** tự động quản lý file structure
-2. **Blocks** được lưu dưới dạng JSON serialization
-3. **Dual indexing**: Hash-based và Index-based lookup
-4. **WAL** đảm bảo durability và crash recovery
-5. **ACID** properties được LevelDB đảm bảo
+```go
+// pkg/blockchain/block.go - Line 75-108
+func (b *Block) IsValid() bool {
+    // 1. Verify Merkle Root integrity
+    var txHashes [][]byte
+    for _, tx := range b.Transactions {
+        hash, err := tx.Hash()
+        if err != nil {
+            return false
+        }
+        txHashes = append(txHashes, hash)
+    }
 
-### Main Code Files:
+    merkleTree := NewMerkleTree(txHashes)
+    calculatedRoot := merkleTree.GetRoot()
 
-- **Storage Logic**: `pkg/storage/leveldb.go`
-- **Block Definition**: `pkg/blockchain/block.go`
-- **Save Process**: `pkg/validator/node.go`
-- **Demo Creation**: `cmd/main.go`
+    // Compare calculated vs stored Merkle Root
+    if !bytes.Equal(calculatedRoot, b.MerkleRoot) {
+        return false
+    }
 
-**🎉 Đây là cách blockchain data được lưu trữ và tổ chức trong project của bạn!**
+    // 2. Verify Block Hash integrity
+    originalHash := make([]byte, len(b.CurrentBlockHash))
+    copy(originalHash, b.CurrentBlockHash)
+
+    b.calculateHash()
+
+    if !bytes.Equal(originalHash, b.CurrentBlockHash) {
+        return false
+    }
+
+    return true
+}
+```
+
+### Transaction Signature Verification
+
+```go
+// pkg/wallet/sign.go - Line 23-29
+func VerifyTransaction(tx *blockchain.Transaction, pubKey *ecdsa.PublicKey) bool {
+    hash, _ := tx.Hash()
+    r := new(big.Int).SetBytes(tx.Signature[:len(tx.Signature)/2])
+    s := new(big.Int).SetBytes(tx.Signature[len(tx.Signature)/2:])
+    return ecdsa.Verify(pubKey, hash, r, s)
+}
+```
+
+## 🚀 Performance Considerations
+
+### Optimization Strategies
+
+1. **Batch Operations**: Group multiple writes
+2. **Index Caching**: Cache latest block index in memory
+3. **Bloom Filters**: Fast existence checks
+4. **Compression**: LevelDB built-in compression
+
+### Scalability Limits
+
+- **Single Machine**: LevelDB không support clustering
+- **Disk Space**: Linear growth với số blocks
+- **Memory**: O(1) memory per operation
+- **Concurrent Access**: Thread-safe qua LevelDB locks
+
+### Production Recommendations
+
+1. **Backup Strategy**: Regular backup của database folders
+2. **Monitoring**: Track database size và performance metrics
+3. **Archival**: Archive old blocks nếu cần
+4. **Sharding**: Split database khi quá lớn
