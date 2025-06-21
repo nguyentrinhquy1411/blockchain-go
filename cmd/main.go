@@ -305,15 +305,14 @@ func aliceToBobTransaction(args []string) {
 		return
 	}
 	fmt.Println("✅ Transaction signature verified")
-
 	// Create validator and process transaction
 	fmt.Println("📦 Creating block...")
-	validator, err := validator.NewValidatorNode("./blockchain_data")
+	validator, err := validator.NewValidatorNodeLegacy("./blockchain_data")
 	if err != nil {
 		fmt.Printf("Error creating validator: %v\n", err)
 		return
 	}
-	defer validator.Close()
+	defer validator.CloseLegacy()
 
 	block, err := validator.CreateBlock([]*blockchain.Transaction{tx})
 	if err != nil {
@@ -372,14 +371,13 @@ func sendTransaction(args []string) {
 		fmt.Printf("Error signing transaction: %v\n", err)
 		return
 	}
-
 	// Create validator and process transaction
-	validator, err := validator.NewValidatorNode("./blockchain_data")
+	validator, err := validator.NewValidatorNodeLegacy("./blockchain_data")
 	if err != nil {
 		fmt.Printf("Error creating validator: %v\n", err)
 		return
 	}
-	defer validator.Close()
+	defer validator.CloseLegacy()
 
 	block, err := validator.CreateBlock([]*blockchain.Transaction{tx})
 	if err != nil {
@@ -396,13 +394,12 @@ func sendTransaction(args []string) {
 
 func runAliceBobDemo() {
 	fmt.Println("🚀 Running Alice & Bob Demo...")
-
 	// Create validator
-	validator, err := validator.NewValidatorNode("./demo_blockchain")
+	validator, err := validator.NewValidatorNodeLegacy("./demo_blockchain")
 	if err != nil {
 		log.Fatal("Failed to create validator:", err)
 	}
-	defer validator.Close()
+	defer validator.CloseLegacy()
 	// Create Alice's wallet
 	fmt.Println("\n👩 Creating Alice's wallet...")
 	alicePriv, err := wallet.GenerateKeyPair()
@@ -507,13 +504,12 @@ func runAliceBobDemo() {
 
 func initBlockchain() {
 	fmt.Println("🔧 Initializing blockchain...")
-
-	validator, err := validator.NewValidatorNode("./blockchain_data")
+	validator, err := validator.NewValidatorNodeLegacy("./blockchain_data")
 	if err != nil {
 		fmt.Printf("Error initializing blockchain: %v\n", err)
 		return
 	}
-	defer validator.Close()
+	defer validator.CloseLegacy()
 	fmt.Println("✅ Blockchain initialized successfully!")
 	fmt.Println("Data directory: ./blockchain_data")
 }

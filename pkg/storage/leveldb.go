@@ -122,3 +122,33 @@ func (bs *BlockStorage) GetLatestIndex() (int, error) {
 // func (bs *BlockStorage) DeleteBlock(hash []byte) error {
 // 	return bs.db.Delete(hash, nil)
 // }
+
+// LevelDB simple wrapper that implements blockchain.Storage interface
+type LevelDB struct {
+	db *leveldb.DB
+}
+
+// NewLevelDB creates a new LevelDB instance
+func NewLevelDB(dbPath string) (*LevelDB, error) {
+	db, err := leveldb.OpenFile(dbPath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open leveldb: %w", err)
+	}
+
+	return &LevelDB{db: db}, nil
+}
+
+// Get implements blockchain.Storage interface
+func (ldb *LevelDB) Get(key string) ([]byte, error) {
+	return ldb.db.Get([]byte(key), nil)
+}
+
+// Put implements blockchain.Storage interface
+func (ldb *LevelDB) Put(key string, value []byte) error {
+	return ldb.db.Put([]byte(key), value, nil)
+}
+
+// Close closes the database
+func (ldb *LevelDB) Close() error {
+	return ldb.db.Close()
+}
