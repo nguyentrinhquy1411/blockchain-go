@@ -4,6 +4,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/nguyentrinhquy1411/blockchain-go/pkg/blockchain"
@@ -32,27 +34,27 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create blockchain: %v", err)
 	}
-
 	// Create P2P server
-	isLeader := nodeID == "node1"
+	isLeaderStr := os.Getenv("IS_LEADER")
+	isLeader, _ := strconv.ParseBool(isLeaderStr)
+
+	peersStr := os.Getenv("PEERS")
 	var peers []string
-	if nodeID != "node1" {
-		peers = append(peers, "node1:50051")
+	if peersStr != "" {
+		peers = strings.Split(peersStr, ",")
 	}
 
 	server := p2p.NewBlockchainServer(nodeID, bc, storage, peers, isLeader)
-
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	// Start server in a goroutine
 	go func() {
-		port := "50051"
-		if nodeID == "node2" {
-			port = "50052"
-		} else if nodeID == "node3" {
-			port = "50053"
+		// Get port from environment or use default
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "50051" // Default port
 		}
 
 		log.Printf("Starting gRPC server on port %s", port)

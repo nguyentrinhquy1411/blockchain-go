@@ -10,6 +10,7 @@ service BlockchainService {
     rpc GetLatestBlock(GetLatestBlockRequest) returns (GetLatestBlockResponse);
     rpc SendTransaction(SendTransactionRequest) returns (SendTransactionResponse);
     rpc SyncBlocks(SyncBlocksRequest) returns (SyncBlocksResponse);
+    rpc NotifyCommittedBlock(NotifyCommittedBlockRequest) returns (NotifyCommittedBlockResponse);
 }
 
 // Messages cho giao dịch
@@ -93,4 +94,14 @@ message SyncBlocksRequest {
 
 message SyncBlocksResponse {
     repeated Block blocks = 1;
+}
+
+// Request/Response cho NotifyCommittedBlock
+message NotifyCommittedBlockRequest {
+    Block block = 1;
+}
+
+message NotifyCommittedBlockResponse {
+    bool success = 1;
+    string message = 2;
 }

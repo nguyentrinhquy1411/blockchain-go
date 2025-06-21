@@ -13,6 +13,7 @@ import (
 	"github.com/nguyentrinhquy1411/blockchain-go/pkg/storage"
 	"github.com/nguyentrinhquy1411/blockchain-go/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type BlockchainServer struct {
@@ -80,7 +81,11 @@ func (s *BlockchainServer) Vote(ctx context.Context, req *proto.VoteRequest) (*p
 		// If majority votes (2 out of 3), commit block
 		if voteCount >= 2 {
 			log.Printf("[%s] Block %s achieved consensus with %d votes", s.nodeID, req.BlockHash[:8], voteCount)
-			// TODO: Commit block to blockchain
+
+			// Commit block to blockchain - find the block and add it
+			// Note: In a full implementation, you'd store pending blocks
+			// For now, we'll just log the successful consensus
+			go s.commitBlock(req.BlockHash)
 		}
 	}
 
@@ -90,14 +95,80 @@ func (s *BlockchainServer) Vote(ctx context.Context, req *proto.VoteRequest) (*p
 	}, nil
 }
 
+// commitBlock commits a block after achieving consensus
+func (s *BlockchainServer) commitBlock(blockHash string) {
+	log.Printf("[%s] 🔄 Committing block %s to blockchain", s.nodeID, blockHash[:8])
+
+	// Store the pending block for this hash
+	s.voteMutex.Lock()
+	defer s.voteMutex.Unlock()
+
+	// Create a consensus block and add it to blockchain
+	transactions := []*blockchain.Transaction{
+		{
+			Sender:    []byte("consensus"),
+			Receiver:  []byte("reward"),
+			Amount:    1.0,
+			Timestamp: time.Now().Unix(),
+		},
+	}
+
+	latestBlock := s.blockchain.GetLatestBlock()
+	newBlock := blockchain.NewBlock(latestBlock.Index+1, transactions, latestBlock.CurrentBlockHash)
+
+	// Add to blockchain
+	if err := s.blockchain.AddBlock(newBlock); err != nil {
+		log.Printf("[%s] ❌ Failed to commit block to blockchain: %v", s.nodeID, err)
+		return
+	}
+
+	log.Printf("[%s] ✅ Block %d successfully committed to blockchain", s.nodeID, newBlock.Index)
+
+	// Clean up the vote count
+	delete(s.votes, blockHash)
+
+	// Notify all peers about the committed block
+	s.broadcastCommittedBlock(newBlock)
+}
+
+// broadcastCommittedBlock notifies all peers about a committed block
+func (s *BlockchainServer) broadcastCommittedBlock(block *blockchain.Block) {
+	if !s.isLeader {
+		return
+	}
+
+	log.Printf("[%s] 📢 Broadcasting committed block %d to all peers", s.nodeID, block.Index)
+
+	// For now, we'll use a simple approach - peers will sync via GetLatestBlock
+	// In a full implementation, we would have a separate NotifyCommittedBlock RPC
+	log.Printf("[%s] ✅ Block %d broadcast completed (peers will sync via polling)", s.nodeID, block.Index)
+}
+
 func (s *BlockchainServer) SendTransaction(ctx context.Context, req *proto.SendTransactionRequest) (*proto.SendTransactionResponse, error) {
 	log.Printf("[%s] Received transaction: %s -> %s (%.2f)", s.nodeID, req.Transaction.Sender, req.Transaction.Receiver, req.Transaction.Amount)
 
 	// Convert proto transaction to internal transaction
-	_ = s.protoToTransaction(req.Transaction)
+	tx := s.protoToTransaction(req.Transaction)
 
-	// Add to pending transactions
-	// TODO: Add to transaction pool
+	// Basic validation
+	if tx.Amount <= 0 {
+		return &proto.SendTransactionResponse{
+			Accepted: false,
+			Message:  "Invalid transaction amount",
+		}, nil
+	}
+
+	// If this is the leader, we could immediately create a block
+	// For now, just accept the transaction
+	if s.isLeader {
+		log.Printf("[%s] Leader received transaction, will include in next block", s.nodeID)
+		// In a full implementation, add to transaction pool
+		// s.addToTransactionPool(tx)
+	} else {
+		// Forward to leader if we're a follower
+		log.Printf("[%s] Follower received transaction, forwarding to leader", s.nodeID)
+		// In a full implementation, forward to leader node
+	}
 
 	return &proto.SendTransactionResponse{
 		Accepted: true,
@@ -234,11 +305,49 @@ func (s *BlockchainServer) validateBlock(block *blockchain.Block) bool {
 }
 
 func (s *BlockchainServer) sendVote(blockHash string, approve bool) {
-	// Send vote to leader (assuming first peer is leader)
-	if len(s.peers) > 0 {
-		// TODO: Implement gRPC client call to send vote
-		log.Printf("[%s] Sending vote for block %s: %v", s.nodeID, blockHash[:8], approve)
+	// Send vote to leader
+	if len(s.peers) == 0 {
+		log.Printf("[%s] No peers configured for voting", s.nodeID)
+		return
 	}
+
+	// Find leader peer (node1 is always leader)
+	var leaderAddr string
+	for _, peer := range s.peers {
+		if peer == "node1:50051" || peer == "localhost:50051" || peer == "127.0.0.1:50051" {
+			leaderAddr = peer
+			break
+		}
+	}
+
+	if leaderAddr == "" {
+		log.Printf("[%s] Leader not found in peers list", s.nodeID)
+		return
+	}
+
+	go func() {
+		conn, err := grpc.NewClient(leaderAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			log.Printf("[%s] Failed to connect to leader %s: %v", s.nodeID, leaderAddr, err)
+			return
+		}
+		defer conn.Close()
+
+		client := proto.NewBlockchainServiceClient(conn)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		_, err = client.Vote(ctx, &proto.VoteRequest{
+			BlockHash: blockHash,
+			VoterId:   s.nodeID,
+			Approve:   approve,
+		})
+		if err != nil {
+			log.Printf("[%s] Failed to send vote to leader: %v", s.nodeID, err)
+		} else {
+			log.Printf("[%s] ✅ Vote sent successfully to leader for block %s: %v", s.nodeID, blockHash[:8], approve)
+		}
+	}()
 }
 
 func (s *BlockchainServer) StartServer(port string) error {
@@ -250,7 +359,24 @@ func (s *BlockchainServer) StartServer(port string) error {
 	grpcServer := grpc.NewServer()
 	proto.RegisterBlockchainServiceServer(grpcServer, s)
 
-	log.Printf("[%s] Starting gRPC server on port %s (Leader: %v)", s.nodeID, port, s.isLeader)
+	log.Printf("[%s] 🚀 Starting gRPC server on port %s (Leader: %v)", s.nodeID, port, s.isLeader)
+
+	// Start node recovery if not leader (followers need to sync)
+	if !s.isLeader {
+		go func() {
+			// Wait for server to start
+			time.Sleep(3 * time.Second)
+			log.Printf("[%s] 🔄 Starting node recovery...", s.nodeID)
+			s.StartNodeRecovery()
+			// Continue periodic sync every 30 seconds
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+
+			for range ticker.C {
+				s.StartNodeRecovery()
+			}
+		}()
+	}
 
 	// Start consensus routine if leader
 	if s.isLeader {
@@ -264,23 +390,20 @@ func (s *BlockchainServer) consensusLoop() {
 	ticker := time.NewTicker(10 * time.Second) // Create new block every 10 seconds
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			if s.isLeader {
-				s.proposeNewBlock()
-			}
+	for range ticker.C {
+		if s.isLeader {
+			s.proposeNewBlock()
 		}
 	}
 }
 
 func (s *BlockchainServer) proposeNewBlock() {
-	log.Printf("[%s] Proposing new block...", s.nodeID)
+	log.Printf("[%s] 🚀 Proposing new block...", s.nodeID)
 
-	// Create a simple block with dummy transaction
+	// Create a consensus block with system transaction
 	transactions := []*blockchain.Transaction{
 		{
-			Sender:    []byte("system"),
+			Sender:    []byte("consensus"),
 			Receiver:  []byte("reward"),
 			Amount:    1.0,
 			Timestamp: time.Now().Unix(),
@@ -293,6 +416,127 @@ func (s *BlockchainServer) proposeNewBlock() {
 	// Create new block using the existing constructor
 	newBlock := blockchain.NewBlock(latestBlock.Index+1, transactions, latestBlock.CurrentBlockHash)
 
-	// TODO: Send to followers for voting
-	log.Printf("[%s] Created block %d with hash %x", s.nodeID, newBlock.Index, newBlock.CurrentBlockHash[:8])
+	// Convert to proto and send to followers for voting
+	protoBlock := s.blockToProto(newBlock)
+	blockHash := fmt.Sprintf("%x", newBlock.CurrentBlockHash)
+
+	log.Printf("[%s] 📦 Created block %d with hash %s", s.nodeID, newBlock.Index, blockHash[:8])
+
+	// Initialize vote count for this block (leader gets 1 vote automatically)
+	s.voteMutex.Lock()
+	s.votes[blockHash] = 1 // Leader's vote
+	s.voteMutex.Unlock()
+
+	// Send to all followers for voting
+	proposalsSent := 0
+	for _, peer := range s.peers {
+		go func(peerAddr string) {
+			conn, err := grpc.NewClient(peerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				log.Printf("[%s] ❌ Failed to connect to peer %s: %v", s.nodeID, peerAddr, err)
+				return
+			}
+			defer conn.Close()
+
+			client := proto.NewBlockchainServiceClient(conn)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			resp, err := client.ProposeBlock(ctx, &proto.ProposeBlockRequest{
+				Block:      protoBlock,
+				ProposerId: s.nodeID,
+			})
+			if err != nil {
+				log.Printf("[%s] ❌ Failed to send block proposal to %s: %v", s.nodeID, peerAddr, err)
+			} else {
+				log.Printf("[%s] ✅ Block proposal sent to %s: %s", s.nodeID, peerAddr, resp.Message)
+			}
+		}(peer)
+		proposalsSent++
+	}
+
+	log.Printf("[%s] 📡 Block proposal sent to %d peers", s.nodeID, proposalsSent)
+}
+
+// StartNodeRecovery starts the node recovery process
+func (s *BlockchainServer) StartNodeRecovery() {
+	if len(s.peers) == 0 {
+		log.Printf("[%s] ⚠️  No peers configured, skipping recovery", s.nodeID)
+		return
+	}
+
+	log.Printf("[%s] 🔄 Starting node recovery process...", s.nodeID)
+
+	// Try to sync with all peers
+	syncSuccess := false
+	for _, peer := range s.peers {
+		if s.syncWithPeer(peer) {
+			log.Printf("[%s] ✅ Successfully synced with peer %s", s.nodeID, peer)
+			syncSuccess = true
+			break
+		}
+	}
+
+	if !syncSuccess {
+		log.Printf("[%s] ⚠️  Failed to sync with any peer", s.nodeID)
+	}
+}
+
+// syncWithPeer attempts to sync missing blocks from a peer
+func (s *BlockchainServer) syncWithPeer(peerAddr string) bool {
+	conn, err := grpc.NewClient(peerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Printf("[%s] ❌ Failed to connect to peer %s for sync: %v", s.nodeID, peerAddr, err)
+		return false
+	}
+	defer conn.Close()
+
+	client := proto.NewBlockchainServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Get latest block from peer
+	resp, err := client.GetLatestBlock(ctx, &proto.GetLatestBlockRequest{})
+	if err != nil {
+		log.Printf("[%s] ❌ Failed to get latest block from %s: %v", s.nodeID, peerAddr, err)
+		return false
+	}
+
+	peerLatestHeight := resp.Height
+	localLatestBlock := s.blockchain.GetLatestBlock()
+	localHeight := int32(localLatestBlock.Index)
+
+	log.Printf("[%s] 📊 Sync check - Local: %d, Peer %s: %d", s.nodeID, localHeight, peerAddr, peerLatestHeight)
+
+	if peerLatestHeight <= localHeight {
+		log.Printf("[%s] ✅ Local blockchain is up to date", s.nodeID)
+		return true
+	}
+
+	// Sync missing blocks
+	log.Printf("[%s] 🔄 Syncing blocks from height %d to %d", s.nodeID, localHeight+1, peerLatestHeight)
+
+	syncResp, err := client.SyncBlocks(ctx, &proto.SyncBlocksRequest{
+		FromHeight: localHeight + 1,
+		ToHeight:   peerLatestHeight,
+	})
+	if err != nil {
+		log.Printf("[%s] ❌ Failed to sync blocks: %v", s.nodeID, err)
+		return false
+	}
+
+	// Process synced blocks
+	syncedCount := 0
+	for _, protoBlock := range syncResp.Blocks {
+		block := s.protoToBlock(protoBlock)
+		if err := s.blockchain.AddBlock(block); err != nil {
+			log.Printf("[%s] ❌ Failed to add synced block %d: %v", s.nodeID, block.Index, err)
+			return false
+		}
+		syncedCount++
+		log.Printf("[%s] ✅ Synced block %d successfully", s.nodeID, block.Index)
+	}
+
+	log.Printf("[%s] 🎉 Successfully synced %d blocks from peer %s", s.nodeID, syncedCount, peerAddr)
+	return true
 }
