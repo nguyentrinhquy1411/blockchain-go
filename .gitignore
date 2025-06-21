@@ -49,6 +49,13 @@ demo_blockchain/
 # Log files
 *.log
 
-# Temporary files
-tmp/
-temp/
+# Database files (LevelDB)
+data/
+*.ldb
+*.manifest
+LOCK
+CURRENT*
+NUL
+
+# Docker volumes
+volumes/
