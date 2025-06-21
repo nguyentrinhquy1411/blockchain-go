@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nguyentrinhquy1411/blockchain-go/pkg/blockchain"
+	"github.com/nguyentrinhquy1411/blockchain-go/pkg/consensus"
 	"github.com/nguyentrinhquy1411/blockchain-go/pkg/storage"
 	"github.com/nguyentrinhquy1411/blockchain-go/proto"
 	"google.golang.org/grpc"
@@ -23,8 +24,14 @@ type BlockchainServer struct {
 	storage    *storage.LevelDB
 	peers      []string
 	isLeader   bool
-	votes      map[string]int // block_hash -> vote_count
-	voteMutex  sync.RWMutex
+
+	// Consensus engines
+	consensusEngine *consensus.ConsensusEngine
+	recoveryEngine  *consensus.RecoveryEngine
+
+	// Legacy voting system (kept for backward compatibility)
+	votes     map[string]int // block_hash -> vote_count
+	voteMutex sync.RWMutex
 
 	// Channels for consensus
 	proposalChan chan *proto.Block
@@ -32,7 +39,7 @@ type BlockchainServer struct {
 }
 
 func NewBlockchainServer(nodeID string, blockchain *blockchain.Blockchain, storage *storage.LevelDB, peers []string, isLeader bool) *BlockchainServer {
-	return &BlockchainServer{
+	server := &BlockchainServer{
 		nodeID:       nodeID,
 		blockchain:   blockchain,
 		storage:      storage,
@@ -42,56 +49,35 @@ func NewBlockchainServer(nodeID string, blockchain *blockchain.Blockchain, stora
 		proposalChan: make(chan *proto.Block, 10),
 		voteChan:     make(chan *proto.VoteRequest, 10),
 	}
+
+	// Initialize consensus engines
+	server.consensusEngine = consensus.NewConsensusEngine(nodeID, blockchain, peers, isLeader)
+	server.recoveryEngine = consensus.NewRecoveryEngine(nodeID, blockchain, peers, isLeader)
+
+	return server
 }
 
 func (s *BlockchainServer) ProposeBlock(ctx context.Context, req *proto.ProposeBlockRequest) (*proto.ProposeBlockResponse, error) {
-	log.Printf("[%s] Received block proposal from %s", s.nodeID, req.ProposerId)
+	log.Printf("[%s] P2P: Received block proposal from %s", s.nodeID, req.ProposerId)
 
-	// Convert proto block to internal block
-	block := s.protoToBlock(req.Block)
-
-	// Validate block
-	if !s.validateBlock(block) {
-		return &proto.ProposeBlockResponse{
-			Accepted: false,
-			Message:  "Block validation failed",
-		}, nil
-	}
-
-	// If not leader, vote on the proposal
-	if !s.isLeader {
-		go s.sendVote(req.Block.Hash, true)
-	}
+	// Use the new consensus engine to process the proposal
+	accepted, message := s.consensusEngine.ProcessBlockProposal(req.ProposerId, req.Block)
 
 	return &proto.ProposeBlockResponse{
-		Accepted: true,
-		Message:  "Block proposal accepted",
+		Accepted: accepted,
+		Message:  message,
 	}, nil
 }
 
 func (s *BlockchainServer) Vote(ctx context.Context, req *proto.VoteRequest) (*proto.VoteResponse, error) {
-	log.Printf("[%s] Received vote from %s for block %s: %v", s.nodeID, req.VoterId, req.BlockHash[:8], req.Approve)
+	log.Printf("[%s] P2P: Received vote from %s for block %s: %v", s.nodeID, req.VoterId, req.BlockHash[:8], req.Approve)
 
-	if s.isLeader && req.Approve {
-		s.voteMutex.Lock()
-		s.votes[req.BlockHash]++
-		voteCount := s.votes[req.BlockHash]
-		s.voteMutex.Unlock()
-
-		// If majority votes (2 out of 3), commit block
-		if voteCount >= 2 {
-			log.Printf("[%s] Block %s achieved consensus with %d votes", s.nodeID, req.BlockHash[:8], voteCount)
-
-			// Commit block to blockchain - find the block and add it
-			// Note: In a full implementation, you'd store pending blocks
-			// For now, we'll just log the successful consensus
-			go s.commitBlock(req.BlockHash)
-		}
-	}
+	// Use the new consensus engine to process the vote
+	success, message := s.consensusEngine.ProcessVote(req.VoterId, req.BlockHash, req.Approve)
 
 	return &proto.VoteResponse{
-		Success: true,
-		Message: "Vote recorded",
+		Success: success,
+		Message: message,
 	}, nil
 }
 
@@ -359,28 +345,19 @@ func (s *BlockchainServer) StartServer(port string) error {
 	grpcServer := grpc.NewServer()
 	proto.RegisterBlockchainServiceServer(grpcServer, s)
 
-	log.Printf("[%s] 🚀 Starting gRPC server on port %s (Leader: %v)", s.nodeID, port, s.isLeader)
+	log.Printf("[%s] P2P: Starting gRPC server on port %s (Leader: %v)", s.nodeID, port, s.isLeader)
 
-	// Start node recovery if not leader (followers need to sync)
+	// Start consensus engine
+	go s.consensusEngine.StartConsensus()
+
+	// Start recovery engine for followers
 	if !s.isLeader {
 		go func() {
 			// Wait for server to start
 			time.Sleep(3 * time.Second)
-			log.Printf("[%s] 🔄 Starting node recovery...", s.nodeID)
-			s.StartNodeRecovery()
-			// Continue periodic sync every 30 seconds
-			ticker := time.NewTicker(30 * time.Second)
-			defer ticker.Stop()
-
-			for range ticker.C {
-				s.StartNodeRecovery()
-			}
+			log.Printf("[%s] P2P: Starting recovery engine...", s.nodeID)
+			s.recoveryEngine.StartRecovery()
 		}()
-	}
-
-	// Start consensus routine if leader
-	if s.isLeader {
-		go s.consensusLoop()
 	}
 
 	return grpcServer.Serve(lis)

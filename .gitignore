@@ -1,61 +1,32 @@
-# Ignore note files
-note.txt
-
-# Go build artifacts
+# Build artifacts
 *.exe
-*.exe~
 *.dll
 *.so
 *.dylib
-
-# Go test binary, built with `go test -c`
 *.test
-
-# Go coverage files
 *.out
 *.prof
-
-# Go workspace file
-go.work
 
 # IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
 
-# OS generated files
+# OS files
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
-# User key files (sensitive)
-user_key.json
-alice_key.json
-bob_key.json
+# User data
 *_key.json
 *.key
 *.pem
-
-# Blockchain data directories (contains sensitive data)
-blockchain_data/
+data/
 demo_blockchain/
-
-# Log files
 *.log
 
-# Database files (LevelDB)
-data/
+# LevelDB files
 *.ldb
 *.manifest
 LOCK
 CURRENT*
-NUL
-
-# Docker volumes
-volumes/

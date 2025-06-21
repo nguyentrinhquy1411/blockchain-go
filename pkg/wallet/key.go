@@ -8,11 +8,11 @@ import (
 )
 
 func GenerateKeyPair() (*ecdsa.PrivateKey, error) {
-	return ecdsa.GenerateKey(elliptic.P256(), rand.Reader) // xài đường cong elliptic.P256() để tạo khóa
+	return ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 }
 
 func PublicKeyToAddress(pubKey *ecdsa.PublicKey) []byte {
-	pubBytes := append(pubKey.X.Bytes(), pubKey.Y.Bytes()...) // nghiên cứu thêm
+	pubBytes := append(pubKey.X.Bytes(), pubKey.Y.Bytes()...)
 	hash := sha256.Sum256(pubBytes)
 	return hash[:20]
 }

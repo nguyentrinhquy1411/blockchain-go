@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-// Block theo yêu cầu: danh sách giao dịch, Merkle Root, PreviousBlockHash, CurrentBlockHash
 type Block struct {
 	Index             int            `json:"index"`
 	Timestamp         int64          `json:"timestamp"`
@@ -16,7 +15,6 @@ type Block struct {
 	CurrentBlockHash  []byte         `json:"current_block_hash"`
 }
 
-// NewBlock tạo block mới từ danh sách transactions
 func NewBlock(index int, transactions []*Transaction, prevHash []byte) *Block {
 	block := &Block{
 		Index:             index,
@@ -25,23 +23,18 @@ func NewBlock(index int, transactions []*Transaction, prevHash []byte) *Block {
 		PreviousBlockHash: prevHash,
 	}
 
-	// Tính Merkle Root từ transactions
-	block.calculateMerkleRoot()
-
-	// Tính Current Block Hash
-	block.calculateHash()
+	block.CalculateMerkleRoot()
+	block.CalculateHash()
 
 	return block
 }
 
-// CalculateMerkleRoot tính Merkle Root từ transactions (exported method)
 func (b *Block) CalculateMerkleRoot() {
 	if len(b.Transactions) == 0 {
 		b.MerkleRoot = []byte{}
 		return
 	}
 
-	// Lấy hash của tất cả transactions
 	var txHashes [][]byte
 	for _, tx := range b.Transactions {
 		hash, err := tx.Hash()
@@ -51,19 +44,11 @@ func (b *Block) CalculateMerkleRoot() {
 		txHashes = append(txHashes, hash)
 	}
 
-	// Tạo Merkle Tree và lấy root
 	merkleTree := NewMerkleTree(txHashes)
 	b.MerkleRoot = merkleTree.GetRoot()
 }
 
-// calculateMerkleRoot tính Merkle Root từ transactions (unexported method for internal use)
-func (b *Block) calculateMerkleRoot() {
-	b.CalculateMerkleRoot()
-}
-
-// CalculateHash tính Current Block Hash (exported method)
 func (b *Block) CalculateHash() {
-	// Tạo struct chỉ chứa data cần hash (không bao gồm CurrentBlockHash)
 	blockData := struct {
 		Index             int            `json:"index"`
 		Timestamp         int64          `json:"timestamp"`
@@ -87,14 +72,7 @@ func (b *Block) CalculateHash() {
 	b.CurrentBlockHash = hash[:]
 }
 
-// calculateHash tính Current Block Hash (unexported method for internal use)
-func (b *Block) calculateHash() {
-	b.CalculateHash()
-}
-
-// IsValid kiểm tra tính hợp lệ của block theo yêu cầu
 func (b *Block) IsValid() bool {
-	// Kiểm tra Merkle Root integrity
 	var txHashes [][]byte
 	for _, tx := range b.Transactions {
 		hash, err := tx.Hash()
@@ -107,7 +85,6 @@ func (b *Block) IsValid() bool {
 	merkleTree := NewMerkleTree(txHashes)
 	calculatedRoot := merkleTree.GetRoot()
 
-	// So sánh calculated vs stored Merkle Root
 	if len(calculatedRoot) != len(b.MerkleRoot) {
 		return false
 	}
@@ -117,11 +94,10 @@ func (b *Block) IsValid() bool {
 		}
 	}
 
-	// Kiểm tra Current Block Hash integrity
 	originalHash := make([]byte, len(b.CurrentBlockHash))
 	copy(originalHash, b.CurrentBlockHash)
 
-	b.calculateHash()
+	b.CalculateHash()
 
 	for i := range originalHash {
 		if originalHash[i] != b.CurrentBlockHash[i] {
